@@ -5,6 +5,8 @@
  * Handles loading and managing all available themes
  */
 
+declare(strict_types=1);
+
 if (!defined('ABSPATH')) {
   exit;
 }
@@ -13,8 +15,10 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
 
   class OG_SVG_Theme_Manager
   {
-    private $themes = array();
-    private $themes_dir;
+    /** @var array<string, array{class: class-string, info: array<string, mixed>, file: string}> */
+    private array $themes = [];
+
+    private string $themes_dir;
 
     public function __construct()
     {
@@ -25,7 +29,7 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
     /**
      * Load all available themes
      */
-    private function loadThemes()
+    private function loadThemes(): void
     {
       // Load base theme class first
       if (!class_exists('OG_SVG_Theme_Base')) {
@@ -35,11 +39,15 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
       // Get all theme files
       $theme_files = glob($this->themes_dir . '*.php');
 
+      if ($theme_files === false) {
+        return;
+      }
+
       foreach ($theme_files as $theme_file) {
         $filename = basename($theme_file, '.php');
 
-        // Skip base theme
-        if ($filename === 'base-theme') {
+        // Skip base theme and theme manager
+        if ($filename === 'base-theme' || $filename === 'theme-manager') {
           continue;
         }
 
@@ -51,14 +59,15 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
 
         if (class_exists($class_name)) {
           // Create temporary instance to get theme info
-          $temp_instance = new $class_name(array(), array());
+          /** @var OG_SVG_Theme_Base $temp_instance */
+          $temp_instance = new $class_name([], []);
           $theme_info = $temp_instance->getThemeInfo();
 
-          $this->themes[$filename] = array(
+          $this->themes[$filename] = [
             'class' => $class_name,
             'info' => $theme_info,
             'file' => $theme_file
-          );
+          ];
         }
       }
     }
@@ -66,18 +75,20 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
     /**
      * Convert filename to class name format
      */
-    private function fileNameToClassName($filename)
+    private function fileNameToClassName(string $filename): string
     {
       // Convert kebab-case or snake_case to PascalCase
-      return str_replace(' ', '', ucwords(str_replace(array('-', '_'), ' ', $filename)));
+      return str_replace(' ', '', ucwords(str_replace(['-', '_'], ' ', $filename)));
     }
 
     /**
      * Get all available themes
+     *
+     * @return array<string, array<string, mixed>>
      */
-    public function getAvailableThemes()
+    public function getAvailableThemes(): array
     {
-      $available = array();
+      $available = [];
 
       foreach ($this->themes as $theme_id => $theme_data) {
         $available[$theme_id] = $theme_data['info'];
@@ -88,8 +99,11 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
 
     /**
      * Get theme instance
+     *
+     * @param array<string, mixed> $settings
+     * @param array<string, mixed> $data
      */
-    public function getTheme($theme_id, $settings = array(), $data = array())
+    public function getTheme(string $theme_id, array $settings = [], array $data = []): OG_SVG_Theme_Base
     {
       if (!isset($this->themes[$theme_id])) {
         // Fallback to default theme
@@ -106,15 +120,17 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
     /**
      * Check if theme exists
      */
-    public function themeExists($theme_id)
+    public function themeExists(string $theme_id): bool
     {
       return isset($this->themes[$theme_id]);
     }
 
     /**
      * Get theme info
+     *
+     * @return array<string, mixed>|null
      */
-    public function getThemeInfo($theme_id)
+    public function getThemeInfo(string $theme_id): ?array
     {
       if (!isset($this->themes[$theme_id])) {
         return null;
@@ -126,9 +142,9 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
     /**
      * Create new theme from template
      */
-    public function createThemeTemplate($theme_name, $theme_id = null)
+    public function createThemeTemplate(string $theme_name, ?string $theme_id = null): string
     {
-      if (!$theme_id) {
+      if ($theme_id === null) {
         $theme_id = sanitize_title($theme_name);
       }
 
@@ -154,7 +170,7 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
     /**
      * Get theme template code
      */
-    private function getThemeTemplate($theme_name, $class_name)
+    private function getThemeTemplate(string $theme_name, string $class_name): string
     {
       return '<?php
 
@@ -271,7 +287,7 @@ class ' . $class_name . ' extends OG_SVG_Theme_Base
     /**
      * Get themes directory path
      */
-    public function getThemesDirectory()
+    public function getThemesDirectory(): string
     {
       return $this->themes_dir;
     }
@@ -279,9 +295,9 @@ class ' . $class_name . ' extends OG_SVG_Theme_Base
     /**
      * Scan for new themes (useful for development)
      */
-    public function refreshThemes()
+    public function refreshThemes(): int
     {
-      $this->themes = array();
+      $this->themes = [];
       $this->loadThemes();
       return count($this->themes);
     }

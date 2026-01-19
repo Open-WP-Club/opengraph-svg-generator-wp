@@ -136,7 +136,7 @@ class OG_SVG_Theme_Gabriel extends OG_SVG_Theme_Base
   private function generateProfessionalFooter($colors)
   {
     $footer = '';
-    
+
     // Modern accent line with gradient effect
     $footer .= '<rect x="320" y="280" width="100" height="4" rx="2" fill="' . $colors['accent'] . '"/>' . "\n";
     $footer .= '<rect x="430" y="280" width="50" height="4" rx="2" fill="' . $colors['accent_secondary'] . '" opacity="0.6"/>' . "\n";
@@ -146,16 +146,19 @@ class OG_SVG_Theme_Gabriel extends OG_SVG_Theme_Base
     $footer .= $this->escapeXML($this->data['site_url']) . "\n";
     $footer .= '</text>' . "\n";
 
-    // Professional credentials indicator
-    $footer .= '<rect x="320" y="340" width="8" height="8" rx="4" fill="' . $colors['accent_secondary'] . '" opacity="0.8"/>' . "\n";
-    $footer .= '<text x="338" y="349" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="500" fill="' . $colors['text_secondary'] . '" opacity="0.7">' . "\n";
-    $footer .= 'Product Manager • PhD Student • Developer' . "\n";
-    $footer .= '</text>' . "\n";
-    
+    // Professional credentials indicator (configurable via settings)
+    $footer_text = $this->settings['footer_text'] ?? '';
+    if (!empty($footer_text)) {
+      $footer .= '<rect x="320" y="340" width="8" height="8" rx="4" fill="' . $colors['accent_secondary'] . '" opacity="0.8"/>' . "\n";
+      $footer .= '<text x="338" y="349" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="500" fill="' . $colors['text_secondary'] . '" opacity="0.7">' . "\n";
+      $footer .= $this->escapeXML($footer_text) . "\n";
+      $footer .= '</text>' . "\n";
+    }
+
     // Tech corner element
     $footer .= '<rect x="1050" y="550" width="100" height="2" fill="' . $colors['accent'] . '" opacity="0.3"/>' . "\n";
     $footer .= '<rect x="1050" y="555" width="60" height="2" fill="' . $colors['accent_secondary'] . '" opacity="0.5"/>' . "\n";
-    
+
     return $footer;
   }
 }

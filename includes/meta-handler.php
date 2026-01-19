@@ -5,6 +5,8 @@
  * Handles injection of OpenGraph meta tags and media library integration
  */
 
+declare(strict_types=1);
+
 if (!defined('ABSPATH')) {
   exit;
 }
@@ -13,47 +15,48 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
 
   class OG_SVG_Meta_Handler
   {
+    /** @var array<string, mixed> */
+    private array $settings;
 
-    private $settings;
-    private $generator;
+    private OG_SVG_Generator $generator;
 
     public function __construct()
     {
-      $this->settings = get_option('og_svg_settings', array());
+      $this->settings = get_option('og_svg_settings', []);
       $this->generator = new OG_SVG_Generator();
 
       // Hook into WordPress
-      add_action('wp_head', array($this, 'addOpenGraphTags'), 5);
-      add_filter('language_attributes', array($this, 'addOpenGraphNamespace'));
+      add_action('wp_head', [$this, 'addOpenGraphTags'], 5);
+      add_filter('language_attributes', [$this, 'addOpenGraphNamespace']);
 
       // Media library integration
-      add_filter('attachment_fields_to_edit', array($this, 'addCustomFieldsToAttachment'), 10, 2);
-      add_action('admin_init', array($this, 'addMediaLibraryColumns'));
-      add_action('pre_get_posts', array($this, 'filterMediaLibraryQuery'));
+      add_filter('attachment_fields_to_edit', [$this, 'addCustomFieldsToAttachment'], 10, 2);
+      add_action('admin_init', [$this, 'addMediaLibraryColumns']);
+      add_action('pre_get_posts', [$this, 'filterMediaLibraryQuery']);
 
       // Add media library tab for OG images
-      add_filter('media_upload_tabs', array($this, 'addMediaTab'));
-      add_action('media_upload_og_svg', array($this, 'mediaTabContent'));
+      add_filter('media_upload_tabs', [$this, 'addMediaTab']);
+      add_action('media_upload_og_svg', [$this, 'mediaTabContent']);
 
       // Add regeneration capability
-      add_action('wp_ajax_regenerate_og_svg', array($this, 'ajaxRegenerateOGSVG'));
+      add_action('wp_ajax_regenerate_og_svg', [$this, 'ajaxRegenerateOGSVG']);
 
       // Clean up on post deletion
-      add_action('before_delete_post', array($this, 'cleanupPostSVG'));
+      add_action('before_delete_post', [$this, 'cleanupPostSVG']);
     }
 
-    public function addOpenGraphNamespace($output)
+    public function addOpenGraphNamespace(string $output): string
     {
       return $output . ' prefix="og: http://ogp.me/ns# article: http://ogp.me/ns/article#"';
     }
 
-    public function addOpenGraphTags()
+    public function addOpenGraphTags(): void
     {
       if (!$this->shouldAddOpenGraphTags()) {
         return;
       }
 
-      global $post;
+      $post = get_post();
 
       // Get page information
       $title = $this->getPageTitle();
@@ -88,7 +91,7 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       }
 
       // Article-specific tags
-      if ($type === 'article' && $post) {
+      if ($type === 'article' && $post instanceof WP_Post) {
         $this->outputMetaTag('article:published_time', get_the_date('c', $post));
         $this->outputMetaTag('article:modified_time', get_the_modified_date('c', $post));
 
@@ -99,12 +102,12 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
 
         // Categories and tags
         $categories = get_the_category($post->ID);
-        if ($categories) {
+        if (!empty($categories)) {
           $this->outputMetaTag('article:section', $categories[0]->name);
         }
 
         $tags = get_the_tags($post->ID);
-        if ($tags) {
+        if (!empty($tags) && is_array($tags)) {
           foreach (array_slice($tags, 0, 5) as $tag) {
             $this->outputMetaTag('article:tag', $tag->name);
           }
@@ -138,14 +141,14 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       echo "<!-- End OpenGraph SVG Generator Meta Tags -->\n\n";
     }
 
-    private function outputMetaTag($property, $content, $attribute = 'property')
+    private function outputMetaTag(string $property, string $content, string $attribute = 'property'): void
     {
       if (!empty($content)) {
         echo '<meta ' . $attribute . '="' . esc_attr($property) . '" content="' . esc_attr($content) . '" />' . "\n";
       }
     }
 
-    private function shouldAddOpenGraphTags()
+    private function shouldAddOpenGraphTags(): bool
     {
       // Skip if another SEO plugin is handling OG tags
       if (defined('WPSEO_VERSION') || defined('RANK_MATH_VERSION') || class_exists('All_in_One_SEO_Pack')) {
@@ -155,24 +158,25 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
         }
       }
 
-      $enabled_post_types = $this->settings['enabled_post_types'] ?? array('post', 'page');
+      $enabled_post_types = $this->settings['enabled_post_types'] ?? ['post', 'page'];
 
       if (is_home() || is_front_page()) {
-        return in_array('page', $enabled_post_types);
+        return in_array('page', $enabled_post_types, true);
       }
 
       if (is_singular()) {
-        return in_array(get_post_type(), $enabled_post_types);
+        $post_type = get_post_type();
+        return $post_type !== false && in_array($post_type, $enabled_post_types, true);
       }
 
       if (is_archive() || is_category() || is_tag() || is_author()) {
-        return in_array('post', $enabled_post_types);
+        return in_array('post', $enabled_post_types, true);
       }
 
       return false;
     }
 
-    private function getPageTitle()
+    private function getPageTitle(): string
     {
       if (is_home() || is_front_page()) {
         $title = get_bloginfo('name');
@@ -181,7 +185,7 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       }
 
       if (is_singular()) {
-        return get_the_title() ?: $this->settings['fallback_title'] ?: 'Untitled';
+        return get_the_title() ?: ($this->settings['fallback_title'] ?? 'Untitled');
       }
 
       if (is_category()) {
@@ -204,13 +208,18 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
         return 'Page Not Found';
       }
 
-      return wp_title('', false) ?: get_bloginfo('name');
+      // Use modern alternative to deprecated wp_title()
+      return wp_get_document_title() ?: get_bloginfo('name');
     }
 
-    private function getPageDescription()
+    private function getPageDescription(): string
     {
       if (is_singular()) {
-        global $post;
+        $post = get_post();
+
+        if (!$post instanceof WP_Post) {
+          return get_bloginfo('description') ?: 'Welcome to our website';
+        }
 
         // Try excerpt first
         if (has_excerpt($post)) {
@@ -219,7 +228,7 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
 
         // Generate from content
         $content = wp_strip_all_tags(strip_shortcodes($post->post_content));
-        $content = preg_replace('/\s+/', ' ', $content);
+        $content = (string) preg_replace('/\s+/', ' ', $content);
 
         if (strlen($content) > 160) {
           $content = substr($content, 0, 157) . '...';
@@ -250,33 +259,34 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       return get_bloginfo('description') ?: 'Welcome to our website';
     }
 
-    private function getCurrentUrl()
+    private function getCurrentUrl(): string
     {
       if (is_home() || is_front_page()) {
         return get_home_url();
       }
 
       if (is_singular()) {
-        return get_permalink();
+        $permalink = get_permalink();
+        return $permalink !== false ? $permalink : get_home_url();
       }
 
       // Build URL for archives, etc.
       global $wp;
-      return home_url(add_query_arg(array(), $wp->request));
+      return home_url(add_query_arg([], $wp->request ?? ''));
     }
 
-    private function getOpenGraphImageUrl()
+    private function getOpenGraphImageUrl(): string
     {
-      global $post;
+      $post = get_post();
 
-      if (is_singular() && $post) {
+      if (is_singular() && $post instanceof WP_Post) {
         return $this->generator->getSVGUrl($post->ID);
       }
 
       return $this->generator->getSVGUrl();
     }
 
-    private function getOpenGraphType()
+    private function getOpenGraphType(): string
     {
       if (is_home() || is_front_page()) {
         return 'website';
@@ -297,48 +307,50 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       return 'website';
     }
 
-    public function addStructuredData()
+    public function addStructuredData(): void
     {
       $title = $this->getPageTitle();
       $description = $this->getPageDescription();
       $url = $this->getCurrentUrl();
       $image_url = $this->getOpenGraphImageUrl();
 
-      $schema = array(
+      $schema = [
         '@context' => 'https://schema.org',
         '@type' => is_singular('post') ? 'Article' : 'WebPage',
         'name' => $title,
         'headline' => $title,
         'description' => $description,
         'url' => $url,
-        'publisher' => array(
+        'publisher' => [
           '@type' => 'Organization',
           'name' => get_bloginfo('name'),
           'url' => get_home_url()
-        )
-      );
+        ]
+      ];
 
       if ($image_url) {
-        $schema['image'] = array(
+        $schema['image'] = [
           '@type' => 'ImageObject',
           'url' => $image_url,
           'width' => 1200,
           'height' => 630
-        );
+        ];
       }
 
       if (is_singular('post')) {
-        global $post;
-        $schema['datePublished'] = get_the_date('c', $post);
-        $schema['dateModified'] = get_the_modified_date('c', $post);
-        $schema['author'] = array(
-          '@type' => 'Person',
-          'name' => get_the_author_meta('display_name', $post->post_author),
-          'url' => get_author_posts_url($post->post_author)
-        );
+        $post = get_post();
+        if ($post instanceof WP_Post) {
+          $schema['datePublished'] = get_the_date('c', $post);
+          $schema['dateModified'] = get_the_modified_date('c', $post);
+          $schema['author'] = [
+            '@type' => 'Person',
+            'name' => get_the_author_meta('display_name', $post->post_author),
+            'url' => get_author_posts_url($post->post_author)
+          ];
 
-        // Add article body
-        $schema['articleBody'] = wp_strip_all_tags(get_the_content());
+          // Add article body
+          $schema['articleBody'] = wp_strip_all_tags(get_the_content());
+        }
       }
 
       echo "\n" . '<script type="application/ld+json">' . "\n";
@@ -348,32 +360,36 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
 
     /**
      * Media Library Integration
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
      */
-    public function addCustomFieldsToAttachment($fields, $post)
+    public function addCustomFieldsToAttachment(array $fields, WP_Post $post): array
     {
       if (get_post_meta($post->ID, '_og_svg_generated', true)) {
         $og_post_id = get_post_meta($post->ID, '_og_svg_post_id', true);
 
-        $fields['og_svg_info'] = array(
+        $fields['og_svg_info'] = [
           'label' => 'OpenGraph SVG Info',
           'input' => 'html',
-          'html' => $this->getOGSVGInfoHTML($post->ID, $og_post_id),
+          'html' => $this->getOGSVGInfoHTML($post->ID, (string) $og_post_id),
           'show_in_edit' => true,
-        );
+        ];
       }
 
       return $fields;
     }
 
-    private function getOGSVGInfoHTML($attachment_id, $og_post_id)
+    private function getOGSVGInfoHTML(int $attachment_id, string $og_post_id): string
     {
       $html = '<div class="og-svg-attachment-info">';
       $html .= '<p><strong>This is an auto-generated OpenGraph image.</strong></p>';
 
-      if ($og_post_id && $og_post_id !== 'home') {
-        $post = get_post($og_post_id);
-        if ($post) {
-          $html .= '<p>Generated for: <a href="' . get_edit_post_link($og_post_id) . '">' . get_the_title($og_post_id) . '</a></p>';
+      if ($og_post_id !== '' && $og_post_id !== 'home') {
+        $related_post = get_post((int) $og_post_id);
+        if ($related_post instanceof WP_Post) {
+          $edit_link = get_edit_post_link((int) $og_post_id);
+          $html .= '<p>Generated for: <a href="' . esc_url((string) $edit_link) . '">' . esc_html(get_the_title((int) $og_post_id)) . '</a></p>';
         }
       } else {
         $html .= '<p>Generated for: Homepage</p>';
@@ -432,19 +448,23 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       return $html;
     }
 
-    public function addMediaLibraryColumns()
+    public function addMediaLibraryColumns(): void
     {
-      add_filter('manage_media_columns', array($this, 'addOGSVGColumn'));
-      add_action('manage_media_custom_column', array($this, 'displayOGSVGColumn'), 10, 2);
+      add_filter('manage_media_columns', [$this, 'addOGSVGColumn']);
+      add_action('manage_media_custom_column', [$this, 'displayOGSVGColumn'], 10, 2);
     }
 
-    public function addOGSVGColumn($columns)
+    /**
+     * @param array<string, string> $columns
+     * @return array<string, string>
+     */
+    public function addOGSVGColumn(array $columns): array
     {
       $columns['og_svg'] = 'OpenGraph';
       return $columns;
     }
 
-    public function displayOGSVGColumn($column_name, $attachment_id)
+    public function displayOGSVGColumn(string $column_name, int $attachment_id): void
     {
       if ($column_name === 'og_svg') {
         if (get_post_meta($attachment_id, '_og_svg_generated', true)) {
@@ -460,48 +480,53 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       }
     }
 
-    public function filterMediaLibraryQuery($query)
+    public function filterMediaLibraryQuery(WP_Query $query): void
     {
       if (is_admin() && $query->is_main_query()) {
-        if (isset($_GET['og_svg_filter']) && $_GET['og_svg_filter'] === 'og_images') {
-          $query->set('meta_query', array(
-            array(
+        $og_svg_filter = isset($_GET['og_svg_filter']) ? sanitize_text_field($_GET['og_svg_filter']) : '';
+        if ($og_svg_filter === 'og_images') {
+          $query->set('meta_query', [
+            [
               'key' => '_og_svg_generated',
               'value' => '1',
               'compare' => '='
-            )
-          ));
+            ]
+          ]);
         }
       }
     }
 
-    public function addMediaTab($tabs)
+    /**
+     * @param array<string, string> $tabs
+     * @return array<string, string>
+     */
+    public function addMediaTab(array $tabs): array
     {
       $tabs['og_svg'] = 'OpenGraph Images';
       return $tabs;
     }
 
-    public function mediaTabContent()
+    public function mediaTabContent(): void
     {
-      wp_iframe(array($this, 'mediaTabIframe'));
+      wp_iframe([$this, 'mediaTabIframe']);
     }
 
-    public function mediaTabIframe()
+    public function mediaTabIframe(): void
     {
       // Get all OG SVG attachments
-      $attachments = get_posts(array(
+      $attachments = get_posts([
         'post_type' => 'attachment',
-        'meta_query' => array(
-          array(
+        'meta_query' => [
+          [
             'key' => '_og_svg_generated',
             'value' => '1',
             'compare' => '='
-          )
-        ),
+          ]
+        ],
         'posts_per_page' => -1,
         'orderby' => 'date',
         'order' => 'DESC'
-      ));
+      ]);
 
       echo '<div class="og-svg-media-tab">';
       echo '<h2>OpenGraph SVG Images</h2>';
@@ -611,15 +636,17 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       </style>';
     }
 
-    public function ajaxRegenerateOGSVG()
+    public function ajaxRegenerateOGSVG(): void
     {
-      // Verify nonce
-      if (!wp_verify_nonce($_POST['nonce'], 'regenerate_og_svg')) {
+      // Verify nonce - validate before accessing
+      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, 'regenerate_og_svg')) {
         wp_die('Security check failed');
       }
 
-      $attachment_id = intval($_POST['attachment_id']);
-      $post_id = $_POST['post_id'] === 'home' ? null : intval($_POST['post_id']);
+      $attachment_id = isset($_POST['attachment_id']) ? (int) $_POST['attachment_id'] : 0;
+      $post_id_raw = isset($_POST['post_id']) ? sanitize_text_field($_POST['post_id']) : '';
+      $post_id = $post_id_raw === 'home' ? null : (int) $post_id_raw;
 
       try {
         // Generate new SVG
@@ -629,43 +656,48 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
         $file_path = $this->generator->getSVGFilePath($post_id);
 
         // Save new content
-        file_put_contents($file_path, $svg_content);
+        $bytes_written = file_put_contents($file_path, $svg_content);
+        if ($bytes_written === false) {
+          throw new Exception('Failed to write SVG file');
+        }
 
         // Update attachment metadata
-        $attachment_data = array(
+        $attachment_data = [
           'ID' => $attachment_id,
           'post_modified' => current_time('mysql'),
-          'post_modified_gmt' => current_time('mysql', 1)
-        );
+          'post_modified_gmt' => current_time('mysql', true)
+        ];
         wp_update_post($attachment_data);
 
-        wp_send_json_success(array(
+        wp_send_json_success([
           'message' => 'OpenGraph image regenerated successfully!'
-        ));
+        ]);
       } catch (Exception $e) {
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'Failed to regenerate image: ' . $e->getMessage()
-        ));
+        ]);
       }
     }
 
-    public function cleanupPostSVG($post_id)
+    public function cleanupPostSVG(int $post_id): void
     {
       // Find and delete associated OG SVG files when a post is deleted
-      $attachments = get_posts(array(
+      $attachments = get_posts([
         'post_type' => 'attachment',
-        'meta_query' => array(
-          array(
+        'meta_query' => [
+          [
             'key' => '_og_svg_post_id',
-            'value' => $post_id,
+            'value' => (string) $post_id,
             'compare' => '='
-          )
-        ),
+          ]
+        ],
         'posts_per_page' => -1
-      ));
+      ]);
 
       foreach ($attachments as $attachment) {
-        wp_delete_attachment($attachment->ID, true);
+        if ($attachment instanceof WP_Post) {
+          wp_delete_attachment($attachment->ID, true);
+        }
       }
 
       // Also delete the file from filesystem
@@ -677,36 +709,40 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
 
     /**
      * Utility Methods
+     *
+     * @return array{total_images: int, by_post_type: array<string, int>}
      */
-    public function getOGImageStats()
+    public function getOGImageStats(): array
     {
-      $stats = array();
+      $stats = [
+        'total_images' => 0,
+        'by_post_type' => []
+      ];
 
       // Count total OG images
-      $total_images = get_posts(array(
+      $total_images = get_posts([
         'post_type' => 'attachment',
-        'meta_query' => array(
-          array(
+        'meta_query' => [
+          [
             'key' => '_og_svg_generated',
             'value' => '1',
             'compare' => '='
-          )
-        ),
+          ]
+        ],
         'posts_per_page' => -1,
         'fields' => 'ids'
-      ));
+      ]);
 
       $stats['total_images'] = count($total_images);
 
       // Count by post type
-      $stats['by_post_type'] = array();
       foreach ($total_images as $attachment_id) {
         $og_post_id = get_post_meta($attachment_id, '_og_svg_post_id', true);
         if ($og_post_id === 'home') {
           $stats['by_post_type']['home'] = ($stats['by_post_type']['home'] ?? 0) + 1;
         } else {
-          $post_type = get_post_type($og_post_id);
-          if ($post_type) {
+          $post_type = get_post_type((int) $og_post_id);
+          if ($post_type !== false) {
             $stats['by_post_type'][$post_type] = ($stats['by_post_type'][$post_type] ?? 0) + 1;
           }
         }
@@ -715,13 +751,15 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
       return $stats;
     }
 
-    public function validateSettings()
+    /**
+     * @return array<string>
+     */
+    public function validateSettings(): array
     {
-      $errors = array();
+      $errors = [];
 
       // Check if upload directory is writable
       $upload_dir = wp_upload_dir();
-      $svg_dir = $upload_dir['basedir'] . '/og-svg/';
 
       if (!is_writable($upload_dir['basedir'])) {
         $errors[] = 'Upload directory is not writable';

@@ -5,6 +5,8 @@
  * Additional functionality for OpenGraph SVG Generator
  */
 
+declare(strict_types=1);
+
 if (!defined('ABSPATH')) {
   exit;
 }
@@ -22,45 +24,50 @@ if (defined('WP_CLI') && WP_CLI) {
 
     /**
      * Generate OpenGraph SVG for all posts
-     * 
+     *
      * ## OPTIONS
-     * 
+     *
      * [--post-type=<post-type>]
      * : Generate only for specific post type
-     * 
+     *
      * [--force]
      * : Regenerate existing images
-     * 
+     *
      * ## EXAMPLES
-     * 
+     *
      *     wp og-svg generate
      *     wp og-svg generate --post-type=post --force
+     *
+     * @param array<int, string> $args
+     * @param array<string, string|bool> $assoc_args
      */
-    public function generate($args, $assoc_args)
+    public function generate(array $args, array $assoc_args): void
     {
       $instance = OpenGraphSVGGenerator::getInstance();
       $generator = $instance->getComponent('generator');
 
-      if (!$generator) {
+      if (!$generator instanceof OG_SVG_Generator) {
         WP_CLI::error('OpenGraph SVG Generator not available');
+        return;
       }
 
-      $settings = get_option('og_svg_settings', array());
-      $enabled_types = $settings['enabled_post_types'] ?? array('post', 'page');
+      $settings = get_option('og_svg_settings', []);
+      $enabled_types = $settings['enabled_post_types'] ?? ['post', 'page'];
 
       $post_type = $assoc_args['post-type'] ?? null;
       $force = isset($assoc_args['force']);
 
-      if ($post_type && !in_array($post_type, $enabled_types)) {
+      if ($post_type !== null && !in_array($post_type, $enabled_types, true)) {
         WP_CLI::error("Post type '{$post_type}' is not enabled for OpenGraph SVG generation");
+        return;
       }
 
-      $query_args = array(
-        'post_type' => $post_type ? $post_type : $enabled_types,
+      $query_args = [
+        'post_type' => $post_type ?? $enabled_types,
         'post_status' => 'publish',
         'posts_per_page' => -1,
         'fields' => 'ids'
-      );
+      ];
 
       $posts = get_posts($query_args);
       $total = count($posts);
@@ -74,6 +81,7 @@ if (defined('WP_CLI') && WP_CLI) {
       $errors = 0;
 
       foreach ($posts as $post_id) {
+        $post_id = (int) $post_id;
         try {
           $file_path = $generator->getSVGFilePath($post_id);
 
@@ -99,18 +107,22 @@ if (defined('WP_CLI') && WP_CLI) {
 
     /**
      * Clean up orphaned OpenGraph SVG files
-     * 
+     *
      * ## EXAMPLES
-     * 
+     *
      *     wp og-svg cleanup
+     *
+     * @param array<int, string> $args
+     * @param array<string, string|bool> $assoc_args
      */
-    public function cleanup($args, $assoc_args)
+    public function cleanup(array $args, array $assoc_args): void
     {
       $instance = OpenGraphSVGGenerator::getInstance();
       $generator = $instance->getComponent('generator');
 
-      if (!$generator) {
+      if (!$generator instanceof OG_SVG_Generator) {
         WP_CLI::error('OpenGraph SVG Generator not available');
+        return;
       }
 
       $result = $generator->cleanupAllSVGs();
@@ -124,18 +136,22 @@ if (defined('WP_CLI') && WP_CLI) {
 
     /**
      * Show OpenGraph SVG statistics
-     * 
+     *
      * ## EXAMPLES
-     * 
+     *
      *     wp og-svg stats
+     *
+     * @param array<int, string> $args
+     * @param array<string, string|bool> $assoc_args
      */
-    public function stats($args, $assoc_args)
+    public function stats(array $args, array $assoc_args): void
     {
       $instance = OpenGraphSVGGenerator::getInstance();
       $meta_handler = $instance->getComponent('meta');
 
-      if (!$meta_handler) {
+      if (!$meta_handler instanceof OG_SVG_Meta_Handler) {
         WP_CLI::error('OpenGraph SVG Meta Handler not available');
+        return;
       }
 
       $stats = $meta_handler->getOGImageStats();
@@ -153,12 +169,15 @@ if (defined('WP_CLI') && WP_CLI) {
 
     /**
      * Test OpenGraph SVG URLs
-     * 
+     *
      * ## EXAMPLES
-     * 
+     *
      *     wp og-svg test
+     *
+     * @param array<int, string> $args
+     * @param array<string, string|bool> $assoc_args
      */
-    public function test($args, $assoc_args)
+    public function test(array $args, array $assoc_args): void
     {
       $home_url = get_site_url() . '/og-svg/home/';
 
@@ -166,10 +185,11 @@ if (defined('WP_CLI') && WP_CLI) {
       WP_CLI::log("Home URL: {$home_url}");
 
       // Test home URL
-      $response = wp_safe_remote_head($home_url, array('timeout' => 10));
+      $response = wp_safe_remote_head($home_url, ['timeout' => 10]);
 
       if (is_wp_error($response)) {
         WP_CLI::error("Home URL test failed: " . $response->get_error_message());
+        return;
       }
 
       $code = wp_remote_retrieve_response_code($response);
@@ -179,15 +199,17 @@ if (defined('WP_CLI') && WP_CLI) {
         WP_CLI::success("Home URL working! Content-Type: {$content_type}");
       } else {
         WP_CLI::error("Home URL returned status code: {$code}");
+        return;
       }
 
       // Test a post URL if posts exist
-      $posts = get_posts(array('numberposts' => 1, 'fields' => 'ids'));
+      $posts = get_posts(['numberposts' => 1, 'fields' => 'ids']);
       if (!empty($posts)) {
-        $post_url = get_site_url() . '/og-svg/' . $posts[0] . '/';
+        $post_id = (int) $posts[0];
+        $post_url = get_site_url() . '/og-svg/' . $post_id . '/';
         WP_CLI::log("Testing post URL: {$post_url}");
 
-        $response = wp_safe_remote_head($post_url, array('timeout' => 10));
+        $response = wp_safe_remote_head($post_url, ['timeout' => 10]);
 
         if (!is_wp_error($response)) {
           $code = wp_remote_retrieve_response_code($response);
@@ -211,18 +233,21 @@ if (defined('WP_CLI') && WP_CLI) {
  */
 class OG_SVG_Debug
 {
-  public static function logRequest($message)
+  public static function logRequest(string $message): void
   {
     if (defined('WP_DEBUG') && WP_DEBUG) {
       error_log('OG SVG: ' . $message);
     }
   }
 
-  public static function getSystemInfo()
+  /**
+   * @return array<string, mixed>
+   */
+  public static function getSystemInfo(): array
   {
     $upload_dir = wp_upload_dir();
 
-    return array(
+    return [
       'php_version' => PHP_VERSION,
       'wp_version' => get_bloginfo('version'),
       'plugin_version' => OG_SVG_VERSION,
@@ -230,16 +255,23 @@ class OG_SVG_Debug
       'permalink_structure' => get_option('permalink_structure'),
       'memory_limit' => ini_get('memory_limit'),
       'max_execution_time' => ini_get('max_execution_time'),
-    );
+    ];
   }
 
-  public static function testRewriteRules()
+  /**
+   * @return array<string, string>
+   */
+  public static function testRewriteRules(): array
   {
     $rules = get_option('rewrite_rules');
-    $og_rules = array();
+    $og_rules = [];
+
+    if (!is_array($rules)) {
+      return $og_rules;
+    }
 
     foreach ($rules as $pattern => $rewrite) {
-      if (strpos($pattern, 'og-svg') !== false) {
+      if (str_contains($pattern, 'og-svg')) {
         $og_rules[$pattern] = $rewrite;
       }
     }

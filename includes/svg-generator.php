@@ -1,9 +1,16 @@
 <?php
 
 /**
- * SVG Generator Class
- * Handles the generation and serving of OpenGraph SVG images
+ * OpenGraph Image Generator Class
+ *
+ * Handles the generation and serving of OpenGraph SVG images.
+ * Uses a modular theme system for customizable image styles.
+ *
+ * @package OpenGraphImageGenerator
+ * @since 1.0.0
  */
+
+declare(strict_types=1);
 
 if (!defined('ABSPATH')) {
   exit;
@@ -13,14 +20,20 @@ if (!class_exists('OG_SVG_Generator')) {
 
   class OG_SVG_Generator
   {
+    /** @var array<string, mixed> */
+    private array $settings;
 
-    private $settings;
-    private $upload_dir;
-    private $theme_manager;
+    /** @var array<string, string> */
+    private array $upload_dir;
+
+    private OG_SVG_Theme_Manager $theme_manager;
+
+    /** @var int Maximum avatar file size in bytes (500KB) */
+    private const MAX_AVATAR_SIZE = 512000;
 
     public function __construct()
     {
-      $this->settings = get_option('og_svg_settings', array());
+      $this->settings = get_option('og_svg_settings', []);
       $this->upload_dir = wp_upload_dir();
 
       // Initialize theme manager
@@ -30,7 +43,7 @@ if (!class_exists('OG_SVG_Generator')) {
       $this->ensureUploadDirectory();
     }
 
-    private function ensureUploadDirectory()
+    private function ensureUploadDirectory(): void
     {
       $svg_dir = $this->upload_dir['basedir'] . '/og-svg/';
       if (!file_exists($svg_dir)) {
@@ -38,7 +51,10 @@ if (!class_exists('OG_SVG_Generator')) {
       }
     }
 
-    public function serveSVG($post_id = null, $preview_settings = null)
+    /**
+     * @param array<string, mixed>|null $preview_settings
+     */
+    public function serveSVG(?int $post_id = null, ?array $preview_settings = null): void
     {
       try {
         // Debug logging
@@ -86,7 +102,10 @@ if (!class_exists('OG_SVG_Generator')) {
       }
     }
 
-    public function generateSVGWithSettings($post_id = null, $custom_settings = array())
+    /**
+     * @param array<string, mixed> $custom_settings
+     */
+    public function generateSVGWithSettings(?int $post_id = null, array $custom_settings = []): string
     {
       // Temporarily override settings
       $original_settings = $this->settings;
@@ -106,7 +125,7 @@ if (!class_exists('OG_SVG_Generator')) {
       }
     }
 
-    public function generateSVG($post_id = null)
+    public function generateSVG(?int $post_id = null): string
     {
       // Get data for SVG
       $data = $this->getSVGData($post_id);
@@ -142,212 +161,196 @@ if (!class_exists('OG_SVG_Generator')) {
 
     /**
      * Get available themes for admin interface
+     *
+     * @return array<string, array<string, mixed>>
      */
-    public function getAvailableThemes()
+    public function getAvailableThemes(): array
     {
       return $this->theme_manager->getAvailableThemes();
     }
 
-    private function generateSVGDefs($colors)
-    {
-      $defs = '<defs>' . "\n";
-
-      // Background gradient
-      $defs .= '<linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">' . "\n";
-      $defs .= '<stop offset="0%" style="stop-color:' . $colors['gradient_start'] . ';stop-opacity:1" />' . "\n";
-      $defs .= '<stop offset="100%" style="stop-color:' . $colors['gradient_end'] . ';stop-opacity:1" />' . "\n";
-      $defs .= '</linearGradient>' . "\n";
-
-      // Text shadow filter
-      $defs .= '<filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%">' . "\n";
-      $defs .= '<feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.3)"/>' . "\n";
-      $defs .= '</filter>' . "\n";
-
-      // Avatar clip path
-      $defs .= '<clipPath id="avatarClip">' . "\n";
-      $defs .= '<circle cx="65" cy="65" r="65"/>' . "\n";
-      $defs .= '</clipPath>' . "\n";
-
-      $defs .= '</defs>' . "\n";
-
-      return $defs;
-    }
-
-    private function generateDecorativeElements($colors)
-    {
-      $elements = '';
-
-      if ($colors === $this->color_schemes['gabriel']) {
-        // Gabriel's tech-inspired theme
-        $elements .= '<circle cx="1050" cy="150" r="120" fill="rgba(59, 130, 246, 0.08)" opacity="0.6"/>' . "\n";
-        $elements .= '<circle cx="1100" cy="500" r="80" fill="rgba(6, 182, 212, 0.06)" opacity="0.8"/>' . "\n";
-        $elements .= '<circle cx="100" cy="100" r="60" fill="rgba(59, 130, 246, 0.05)" opacity="0.7"/>' . "\n";
-
-        // Tech hexagons
-        $elements .= '<polygon points="950,50 980,35 1010,50 1010,80 980,95 950,80" fill="rgba(59, 130, 246, 0.08)" opacity="0.4"/>' . "\n";
-        $elements .= '<polygon points="1080,400 1100,390 1120,400 1120,420 1100,430 1080,420" fill="rgba(6, 182, 212, 0.06)" opacity="0.5"/>' . "\n";
-      } else {
-        // Generic decorative elements
-        $elements .= '<circle cx="1100" cy="100" r="150" fill="rgba(255,255,255,0.05)"/>' . "\n";
-        $elements .= '<circle cx="1050" cy="550" r="100" fill="rgba(255,255,255,0.03)"/>' . "\n";
-        $elements .= '<circle cx="150" cy="50" r="80" fill="rgba(255,255,255,0.04)"/>' . "\n";
-      }
-
-      return $elements;
-    }
-
-    private function generateAvatarSection($avatar_url)
-    {
-      $avatar = '';
-
-      // Avatar background circle
-      $avatar .= '<circle cx="200" cy="200" r="70" fill="rgba(255,255,255,0.9)" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>' . "\n";
-
-      // Try to embed avatar image
-      try {
-        $avatar_data = $this->getImageAsBase64($avatar_url);
-        if ($avatar_data) {
-          $avatar .= '<image x="135" y="135" width="130" height="130" href="' . $avatar_data . '" clip-path="url(#avatarClip)" transform="translate(65,65)"/>' . "\n";
-        }
-      } catch (Exception $e) {
-        // Fallback to a simple icon if avatar loading fails
-        error_log('Avatar loading failed: ' . $e->getMessage());
-        $avatar .= '<circle cx="200" cy="200" r="50" fill="rgba(255,255,255,0.3)"/>' . "\n";
-        $avatar .= '<path d="M200 170 c-11 0 -20 9 -20 20 s 9 20 20 20 s 20 -9 20 -20 s -9 -20 -20 -20 z M200 220 c-16.5 0 -30 13.5 -30 30 l 60 0 c 0 -16.5 -13.5 -30 -30 -30 z" fill="rgba(255,255,255,0.6)"/>' . "\n";
-      }
-
-      return $avatar;
-    }
-
-    private function generateTextContent($data, $colors)
-    {
-      $text = '';
-
-      // Main site title
-      $site_title = $this->truncateText($data['site_title'], 25);
-      $text .= '<text x="320" y="160" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="42" font-weight="700" fill="' . $colors['text_primary'] . '" filter="url(#textShadow)">' . "\n";
-      $text .= $this->escapeXML($site_title) . "\n";
-      $text .= '</text>' . "\n";
-
-      // Page title (subtitle)
-      $page_title = $this->truncateText($data['page_title'], 50);
-      $text .= '<text x="320" y="210" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="28" font-weight="400" fill="' . $colors['text_secondary'] . '">' . "\n";
-      $text .= $this->escapeXML($page_title) . "\n";
-      $text .= '</text>' . "\n";
-
-      // Tagline (if enabled)
-      if (!empty($this->settings['show_tagline']) && !empty($data['tagline'])) {
-        $tagline = $this->truncateText($data['tagline'], 80);
-        $text .= '<text x="320" y="250" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="18" font-weight="300" fill="' . $colors['text_secondary'] . '" opacity="0.8">' . "\n";
-        $text .= $this->escapeXML($tagline) . "\n";
-        $text .= '</text>' . "\n";
-      }
-
-      return $text;
-    }
-
-    private function generateFooterElements($data, $colors)
-    {
-      $footer = '';
-
-      // Accent line
-      $footer .= '<rect x="320" y="280" width="100" height="4" rx="2" fill="' . $colors['accent'] . '"/>' . "\n";
-
-      // Website URL
-      $footer .= '<text x="320" y="320" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="16" font-weight="400" fill="' . $colors['text_secondary'] . '" opacity="0.7">' . "\n";
-      $footer .= $this->escapeXML($data['site_url']) . "\n";
-      $footer .= '</text>' . "\n";
-
-      // Professional indicator for Gabriel theme
-      if (isset($colors['accent_secondary']) && $colors === $this->color_schemes['gabriel']) {
-        $footer .= '<rect x="320" y="340" width="8" height="8" rx="4" fill="' . $colors['accent_secondary'] . '" opacity="0.6"/>' . "\n";
-        $footer .= '<text x="338" y="349" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="500" fill="' . $colors['text_secondary'] . '" opacity="0.6">' . "\n";
-        $footer .= 'Product Manager • PhD Student • Developer' . "\n";
-        $footer .= '</text>' . "\n";
-      }
-
-      return $footer;
-    }
-
-    private function getImageAsBase64($image_url)
+    /**
+     * Converts an image URL to a base64 data URI with size validation and caching.
+     *
+     * @param string $image_url The URL of the image to convert
+     * @return string|false Base64 data URI or false on failure
+     * @throws Exception If avatar exceeds size limit
+     */
+    private function getImageAsBase64(string $image_url): string|false
     {
       if (empty($image_url)) {
         return false;
       }
 
       // Handle local WordPress uploads
-      if (strpos($image_url, $this->upload_dir['baseurl']) === 0) {
+      if (str_starts_with($image_url, $this->upload_dir['baseurl'])) {
         $local_path = str_replace($this->upload_dir['baseurl'], $this->upload_dir['basedir'], $image_url);
         if (file_exists($local_path)) {
+          // Validate file size
+          $file_size = filesize($local_path);
+          if ($file_size !== false && $file_size > self::MAX_AVATAR_SIZE) {
+            error_log('OG SVG: Avatar file too large (' . $file_size . ' bytes). Max: ' . self::MAX_AVATAR_SIZE);
+            return false;
+          }
+
           $image_data = file_get_contents($local_path);
-          $mime_type = wp_check_filetype($local_path)['type'] ?: 'image/jpeg';
+          if ($image_data === false) {
+            return false;
+          }
+          $file_type = wp_check_filetype($local_path);
+          $mime_type = $file_type['type'] ?: 'image/jpeg';
           return 'data:' . $mime_type . ';base64,' . base64_encode($image_data);
         }
       }
 
+      // Check for cached external avatar
+      $cached_avatar = $this->getCachedAvatar($image_url);
+      if ($cached_avatar !== false) {
+        return $cached_avatar;
+      }
+
       // Handle external URLs
-      $response = wp_safe_remote_get($image_url, array(
+      $response = wp_safe_remote_get($image_url, [
         'timeout' => 10,
-        'headers' => array(
-          'User-Agent' => 'WordPress OpenGraph SVG Generator'
-        )
-      ));
+        'headers' => [
+          'User-Agent' => 'WordPress OpenGraph Image Generator'
+        ]
+      ]);
 
       if (is_wp_error($response)) {
-        throw new Exception('Failed to fetch avatar: ' . $response->get_error_message());
+        error_log('OG SVG: Failed to fetch avatar: ' . $response->get_error_message());
+        return false;
       }
 
       $body = wp_remote_retrieve_body($response);
       $content_type = wp_remote_retrieve_header($response, 'content-type');
 
-      if (empty($body) || strpos($content_type, 'image/') !== 0) {
-        throw new Exception('Invalid image response');
+      if (empty($body) || !str_starts_with((string) $content_type, 'image/')) {
+        error_log('OG SVG: Invalid image response from ' . $image_url);
+        return false;
       }
+
+      // Validate response size
+      $body_size = strlen($body);
+      if ($body_size > self::MAX_AVATAR_SIZE) {
+        error_log('OG SVG: External avatar too large (' . $body_size . ' bytes). Max: ' . self::MAX_AVATAR_SIZE);
+        return false;
+      }
+
+      // Cache the avatar locally
+      $this->cacheAvatar($image_url, $body, (string) $content_type);
 
       return 'data:' . $content_type . ';base64,' . base64_encode($body);
     }
 
-    public function saveSVGToMedia($svg_content, $post_id = null)
+    /**
+     * Get cached avatar if exists and not expired.
+     *
+     * @param string $image_url Original avatar URL
+     * @return string|false Base64 data URI or false if not cached
+     */
+    private function getCachedAvatar(string $image_url): string|false
+    {
+      $cache_dir = $this->upload_dir['basedir'] . '/og-svg/avatars/';
+      $cache_file = $cache_dir . md5($image_url);
+
+      if (!file_exists($cache_file)) {
+        return false;
+      }
+
+      // Check if cache is expired (7 days)
+      $cache_age = time() - filemtime($cache_file);
+      if ($cache_age > 604800) {
+        unlink($cache_file);
+        return false;
+      }
+
+      $cached_data = file_get_contents($cache_file);
+      if ($cached_data === false) {
+        return false;
+      }
+
+      // Cache file format: mime_type|base64_data
+      $parts = explode('|', $cached_data, 2);
+      if (count($parts) !== 2) {
+        unlink($cache_file);
+        return false;
+      }
+
+      return 'data:' . $parts[0] . ';base64,' . $parts[1];
+    }
+
+    /**
+     * Cache avatar locally for faster subsequent requests.
+     *
+     * @param string $image_url Original avatar URL
+     * @param string $image_data Raw image data
+     * @param string $content_type MIME type
+     */
+    private function cacheAvatar(string $image_url, string $image_data, string $content_type): void
+    {
+      $cache_dir = $this->upload_dir['basedir'] . '/og-svg/avatars/';
+
+      // Ensure cache directory exists
+      if (!file_exists($cache_dir)) {
+        wp_mkdir_p($cache_dir);
+      }
+
+      $cache_file = $cache_dir . md5($image_url);
+
+      // Store as mime_type|base64_data
+      $cache_content = $content_type . '|' . base64_encode($image_data);
+      file_put_contents($cache_file, $cache_content);
+    }
+
+    public function saveSVGToMedia(string $svg_content, ?int $post_id = null): void
     {
       try {
         // Generate filename
-        $filename = $post_id ? "og-svg-{$post_id}.svg" : "og-svg-home.svg";
+        $filename = $post_id !== null ? "og-svg-{$post_id}.svg" : "og-svg-home.svg";
         $file_path = $this->upload_dir['basedir'] . '/og-svg/' . $filename;
 
         // Save to file system
-        file_put_contents($file_path, $svg_content);
+        $bytes_written = file_put_contents($file_path, $svg_content);
+        if ($bytes_written === false) {
+          throw new Exception('Failed to write SVG file to disk');
+        }
 
         // Add to media library if it doesn't exist
-        $existing = get_posts(array(
+        $existing = get_posts([
           'post_type' => 'attachment',
-          'meta_query' => array(
-            array(
+          'meta_query' => [
+            [
               'key' => '_og_svg_file',
               'value' => $filename,
               'compare' => '='
-            )
-          ),
+            ]
+          ],
           'posts_per_page' => 1
-        ));
+        ]);
 
         if (empty($existing)) {
-          $attachment_data = array(
-            'post_title' => $post_id ? get_the_title($post_id) . ' - OpenGraph Image' : get_bloginfo('name') . ' - OpenGraph Image',
+          $post_title = $post_id !== null
+            ? get_the_title($post_id) . ' - OpenGraph Image'
+            : get_bloginfo('name') . ' - OpenGraph Image';
+
+          $attachment_data = [
+            'post_title' => $post_title,
             'post_content' => 'Auto-generated OpenGraph SVG image',
             'post_status' => 'inherit',
             'post_mime_type' => 'image/svg+xml'
-          );
+          ];
 
           $attachment_id = wp_insert_attachment($attachment_data, $file_path);
 
-          if (!is_wp_error($attachment_id)) {
+          if (!is_wp_error($attachment_id) && is_int($attachment_id)) {
             // Add custom meta to identify OG SVG files
             update_post_meta($attachment_id, '_og_svg_generated', '1');
             update_post_meta($attachment_id, '_og_svg_file', $filename);
-            update_post_meta($attachment_id, '_og_svg_post_id', $post_id ?: 'home');
+            update_post_meta($attachment_id, '_og_svg_post_id', $post_id ?? 'home');
 
             // Generate attachment metadata
-            require_once(ABSPATH . 'wp-admin/includes/image.php');
+            require_once ABSPATH . 'wp-admin/includes/image.php';
             $attach_data = wp_generate_attachment_metadata($attachment_id, $file_path);
             wp_update_attachment_metadata($attachment_id, $attach_data);
           }
@@ -357,7 +360,7 @@ if (!class_exists('OG_SVG_Generator')) {
       }
     }
 
-    private function serveFallbackSVG($error_message = null)
+    private function serveFallbackSVG(?string $error_message = null): void
     {
       // Set headers
       header('Content-Type: image/svg+xml');
@@ -392,27 +395,31 @@ if (!class_exists('OG_SVG_Generator')) {
       echo $fallback;
     }
 
-    private function getSVGData($post_id = null)
+    /**
+     * @return array<string, mixed>
+     */
+    private function getSVGData(?int $post_id = null): array
     {
-      $data = array();
+      $data = [];
 
       // Site title
       $data['site_title'] = get_bloginfo('name') ?: 'WordPress Site';
 
       // Page title
-      if ($post_id) {
+      if ($post_id !== null) {
         $post = get_post($post_id);
-        if ($post) {
-          $data['page_title'] = $post->post_title ?: ($this->settings['fallback_title'] ?: 'Welcome');
+        if ($post instanceof WP_Post) {
+          $data['page_title'] = $post->post_title ?: ($this->settings['fallback_title'] ?? 'Welcome');
         } else {
-          $data['page_title'] = $this->settings['fallback_title'] ?: 'Page Not Found';
+          $data['page_title'] = $this->settings['fallback_title'] ?? 'Page Not Found';
         }
       } else {
         // Home page
         if (is_home() || is_front_page()) {
-          $data['page_title'] = $this->settings['fallback_title'] ?: 'Welcome';
+          $data['page_title'] = $this->settings['fallback_title'] ?? 'Welcome';
         } else {
-          $data['page_title'] = wp_title('', false) ?: get_the_title() ?: 'Page';
+          // Use modern alternative to deprecated wp_title()
+          $data['page_title'] = wp_get_document_title() ?: get_the_title() ?: 'Page';
         }
       }
 
@@ -420,138 +427,165 @@ if (!class_exists('OG_SVG_Generator')) {
       $data['tagline'] = get_bloginfo('description') ?: '';
 
       // Avatar URL
-      $data['avatar_url'] = $this->settings['avatar_url'] ?: '';
+      $data['avatar_url'] = $this->settings['avatar_url'] ?? '';
 
       // Site URL
-      $data['site_url'] = parse_url(get_site_url(), PHP_URL_HOST) ?: get_site_url();
+      $parsed_url = parse_url(get_site_url(), PHP_URL_HOST);
+      $data['site_url'] = is_string($parsed_url) ? $parsed_url : get_site_url();
 
       return $data;
     }
 
-    private function getColorScheme()
+    public function getSVGUrl(?int $post_id = null): string
     {
-      $scheme = $this->settings['color_scheme'] ?? 'gabriel';
-      return $this->color_schemes[$scheme] ?? $this->color_schemes['gabriel'];
-    }
-
-    private function truncateText($text, $max_length)
-    {
-      $text = trim($text);
-      if (mb_strlen($text) <= $max_length) {
-        return $text;
-      }
-
-      return mb_substr($text, 0, $max_length - 3) . '...';
-    }
-
-    private function escapeXML($text)
-    {
-      return htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-    }
-
-    public function getSVGUrl($post_id = null)
-    {
-      if ($post_id) {
+      if ($post_id !== null) {
         return get_site_url() . '/og-svg/' . $post_id . '/';
-      } else {
-        return get_site_url() . '/og-svg/home/';
       }
+      return get_site_url() . '/og-svg/home/';
     }
 
-    public function getSVGFilePath($post_id = null)
+    public function getSVGFilePath(?int $post_id = null): string
     {
-      $filename = $post_id ? "og-svg-{$post_id}.svg" : "og-svg-home.svg";
+      $filename = $post_id !== null ? "og-svg-{$post_id}.svg" : "og-svg-home.svg";
       return $this->upload_dir['basedir'] . '/og-svg/' . $filename;
     }
 
-    public function getSVGFileUrl($post_id = null)
+    public function getSVGFileUrl(?int $post_id = null): string
     {
-      $filename = $post_id ? "og-svg-{$post_id}.svg" : "og-svg-home.svg";
+      $filename = $post_id !== null ? "og-svg-{$post_id}.svg" : "og-svg-home.svg";
       return $this->upload_dir['baseurl'] . '/og-svg/' . $filename;
     }
 
-    public function cleanupAllSVGs()
+    /**
+     * @return array{files_removed: int, attachments_removed: int}
+     */
+    public function cleanupAllSVGs(): array
     {
       $svg_dir = $this->upload_dir['basedir'] . '/og-svg/';
       $count = 0;
 
       if (is_dir($svg_dir)) {
         $files = glob($svg_dir . '*.svg');
-        foreach ($files as $file) {
-          if (unlink($file)) {
-            $count++;
+        if ($files !== false) {
+          foreach ($files as $file) {
+            if (unlink($file)) {
+              $count++;
+            }
           }
         }
 
         // Remove directory if empty
-        if (count(glob($svg_dir . '*')) === 0) {
+        $remaining = glob($svg_dir . '*');
+        if ($remaining !== false && count($remaining) === 0) {
           rmdir($svg_dir);
         }
       }
 
       // Remove from media library
-      $attachments = get_posts(array(
+      $attachments = get_posts([
         'post_type' => 'attachment',
-        'meta_query' => array(
-          array(
+        'meta_query' => [
+          [
             'key' => '_og_svg_generated',
             'value' => '1',
             'compare' => '='
-          )
-        ),
+          ]
+        ],
         'posts_per_page' => -1
-      ));
+      ]);
 
       foreach ($attachments as $attachment) {
-        wp_delete_attachment($attachment->ID, true);
+        if ($attachment instanceof WP_Post) {
+          wp_delete_attachment($attachment->ID, true);
+        }
       }
 
-      return array(
+      return [
         'files_removed' => $count,
         'attachments_removed' => count($attachments)
-      );
+      ];
     }
 
-    public function cleanupOrphanedFiles()
+    /**
+     * Cleanup orphaned SVG files where the original post no longer exists.
+     * Optimized to use batch queries instead of per-file queries.
+     *
+     * @return int Number of files cleaned up
+     */
+    public function cleanupOrphanedFiles(): int
     {
       $upload_dir = wp_upload_dir();
       $svg_dir = $upload_dir['basedir'] . '/og-svg/';
       $cleaned = 0;
 
-      if (is_dir($svg_dir)) {
-        $files = glob($svg_dir . 'og-svg-*.svg');
+      if (!is_dir($svg_dir)) {
+        return 0;
+      }
 
-        foreach ($files as $file) {
-          $filename = basename($file);
+      $files = glob($svg_dir . 'og-svg-*.svg');
+      if ($files === false || empty($files)) {
+        return 0;
+      }
 
-          // Extract post ID from filename
-          if (preg_match('/og-svg-(\d+)\.svg/', $filename, $matches)) {
-            $post_id = $matches[1];
+      // Extract all post IDs from filenames
+      $post_ids_to_check = [];
+      $file_map = []; // Maps post_id => file_path
 
-            // Check if post still exists
-            if (!get_post($post_id)) {
-              unlink($file);
-              $cleaned++;
+      foreach ($files as $file) {
+        $filename = basename($file);
+        if (preg_match('/og-svg-(\d+)\.svg/', $filename, $matches)) {
+          $post_id = (int) $matches[1];
+          $post_ids_to_check[] = $post_id;
+          $file_map[$post_id] = $file;
+        }
+      }
 
-              // Also remove from media library
-              $attachments = get_posts(array(
-                'post_type' => 'attachment',
-                'meta_query' => array(
-                  array(
-                    'key' => '_og_svg_post_id',
-                    'value' => $post_id,
-                    'compare' => '='
-                  )
-                ),
-                'posts_per_page' => 1,
-                'fields' => 'ids'
-              ));
+      if (empty($post_ids_to_check)) {
+        return 0;
+      }
 
-              foreach ($attachments as $attachment_id) {
-                wp_delete_attachment($attachment_id, true);
-              }
-            }
+      // Batch query to find which posts still exist
+      $existing_posts = get_posts([
+        'post_type' => 'any',
+        'post_status' => 'any',
+        'post__in' => $post_ids_to_check,
+        'posts_per_page' => -1,
+        'fields' => 'ids'
+      ]);
+
+      $existing_post_ids = array_map('intval', $existing_posts);
+      $orphaned_post_ids = array_diff($post_ids_to_check, $existing_post_ids);
+
+      if (empty($orphaned_post_ids)) {
+        return 0;
+      }
+
+      // Delete orphaned files
+      foreach ($orphaned_post_ids as $post_id) {
+        if (isset($file_map[$post_id]) && file_exists($file_map[$post_id])) {
+          if (unlink($file_map[$post_id])) {
+            $cleaned++;
           }
+        }
+      }
+
+      // Batch cleanup from media library
+      if (!empty($orphaned_post_ids)) {
+        $attachments = get_posts([
+          'post_type' => 'attachment',
+          'meta_query' => [
+            [
+              'key' => '_og_svg_post_id',
+              'value' => array_map('strval', $orphaned_post_ids),
+              'compare' => 'IN'
+            ]
+          ],
+          'posts_per_page' => -1,
+          'fields' => 'ids'
+        ]);
+
+        foreach ($attachments as $attachment_id) {
+          wp_delete_attachment($attachment_id, true);
         }
       }
 

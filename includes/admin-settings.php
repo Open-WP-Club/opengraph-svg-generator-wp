@@ -5,6 +5,8 @@
  * Handles WordPress admin interface for plugin configuration
  */
 
+declare(strict_types=1);
+
 if (!defined('ABSPATH')) {
   exit;
 }
@@ -13,36 +15,40 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
   class OG_SVG_Admin_Settings
   {
+    /** @var array<string, mixed> */
+    private array $settings;
 
-    private $settings;
-    private $settings_updated = false;
+    private bool $settings_updated = false;
 
     public function __construct()
     {
-      add_action('admin_menu', array($this, 'addAdminMenu'));
-      add_action('admin_init', array($this, 'initSettings'));
-      add_action('admin_enqueue_scripts', array($this, 'enqueueAdminScripts'));
-      add_action('wp_ajax_og_svg_generate_preview', array($this, 'ajaxGeneratePreview'));
-      add_action('wp_ajax_og_svg_cleanup_images', array($this, 'ajaxCleanupImages'));
-      add_action('wp_ajax_og_svg_flush_rewrite', array($this, 'ajaxFlushRewrite'));
-      add_action('wp_ajax_og_svg_test_url', array($this, 'ajaxTestUrl'));
-      add_action('wp_ajax_og_svg_bulk_generate', array($this, 'ajaxBulkGenerate'));
+      add_action('admin_menu', [$this, 'addAdminMenu']);
+      add_action('admin_init', [$this, 'initSettings']);
+      add_action('admin_enqueue_scripts', [$this, 'enqueueAdminScripts']);
+      add_action('wp_ajax_og_svg_generate_preview', [$this, 'ajaxGeneratePreview']);
+      add_action('wp_ajax_og_svg_cleanup_images', [$this, 'ajaxCleanupImages']);
+      add_action('wp_ajax_og_svg_flush_rewrite', [$this, 'ajaxFlushRewrite']);
+      add_action('wp_ajax_og_svg_test_url', [$this, 'ajaxTestUrl']);
+      add_action('wp_ajax_og_svg_bulk_generate', [$this, 'ajaxBulkGenerate']);
 
       // Suppress default WordPress settings messages
-      add_action('admin_notices', array($this, 'suppressDefaultNotices'), 1);
+      add_action('admin_notices', [$this, 'suppressDefaultNotices'], 1);
 
-      $this->settings = get_option('og_svg_settings', array());
+      $this->settings = get_option('og_svg_settings', []);
     }
 
-    public function suppressDefaultNotices()
+    public function suppressDefaultNotices(): void
     {
       // Remove the default "Settings saved." message on our settings page
-      if (isset($_GET['page']) && $_GET['page'] === 'og-svg-settings' && isset($_GET['settings-updated'])) {
+      $page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+      $settings_updated = isset($_GET['settings-updated']);
+
+      if ($page === 'og-svg-settings' && $settings_updated) {
         // Mark that settings were updated so we can show our custom message
         $this->settings_updated = true;
 
         // Remove the settings-updated parameter to prevent WordPress from showing its message
-        add_action('admin_head', function () {
+        add_action('admin_head', function (): void {
           echo '<script type="text/javascript">
             if (window.history.replaceState) {
               window.history.replaceState(null, null, window.location.href.split("&settings-updated=true")[0]);
@@ -52,18 +58,18 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       }
     }
 
-    public function addAdminMenu()
+    public function addAdminMenu(): void
     {
       add_options_page(
         'OpenGraph SVG Settings',
         'OpenGraph SVG',
         'manage_options',
         'og-svg-settings',
-        array($this, 'settingsPage')
+        [$this, 'settingsPage']
       );
     }
 
-    public function enqueueAdminScripts($hook)
+    public function enqueueAdminScripts(string $hook): void
     {
       if ($hook !== 'settings_page_og-svg-settings') {
         return;
@@ -74,50 +80,50 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       wp_enqueue_style(
         'og-svg-admin-css',
         OG_SVG_PLUGIN_URL . 'assets/css/admin.css',
-        array(),
+        [],
         OG_SVG_VERSION
       );
 
       wp_enqueue_script(
         'og-svg-admin',
         OG_SVG_PLUGIN_URL . 'assets/js/admin.js',
-        array('jquery'),
+        ['jquery'],
         OG_SVG_VERSION,
         true
       );
 
-      wp_localize_script('og-svg-admin', 'og_svg_admin', array(
+      wp_localize_script('og-svg-admin', 'og_svg_admin', [
         'ajax_url' => admin_url('admin-ajax.php'),
         'nonce' => wp_create_nonce('og_svg_admin_nonce'),
         'settings_updated' => $this->settings_updated,
-        'messages' => array(
+        'messages' => [
           'generating' => __('Generating preview...', 'og-svg-generator'),
           'cleaning' => __('Removing images...', 'og-svg-generator'),
           'success' => __('Operation completed successfully!', 'og-svg-generator'),
           'error' => __('An error occurred. Please try again.', 'og-svg-generator')
-        )
-      ));
+        ]
+      ]);
     }
 
-    public function initSettings()
+    public function initSettings(): void
     {
       register_setting(
         'og_svg_settings_group',
         'og_svg_settings',
-        array($this, 'sanitizeSettings')
+        ['sanitize_callback' => [$this, 'sanitizeSettings']]
       );
 
       add_settings_section(
         'og_svg_general_section',
         '',
-        array($this, 'generalSectionCallback'),
+        [$this, 'generalSectionCallback'],
         'og-svg-settings'
       );
 
       add_settings_field(
         'avatar_url',
         'Avatar Image',
-        array($this, 'avatarUrlFieldCallback'),
+        [$this, 'avatarUrlFieldCallback'],
         'og-svg-settings',
         'og_svg_general_section'
       );
@@ -125,7 +131,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       add_settings_field(
         'color_scheme',
         'Theme',
-        array($this, 'colorSchemeFieldCallback'),
+        [$this, 'colorSchemeFieldCallback'],
         'og-svg-settings',
         'og_svg_general_section'
       );
@@ -133,7 +139,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       add_settings_field(
         'show_tagline',
         'Display Options',
-        array($this, 'displayOptionsFieldCallback'),
+        [$this, 'displayOptionsFieldCallback'],
         'og-svg-settings',
         'og_svg_general_section'
       );
@@ -141,7 +147,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       add_settings_field(
         'fallback_title',
         'Fallback Title',
-        array($this, 'fallbackTitleFieldCallback'),
+        [$this, 'fallbackTitleFieldCallback'],
         'og-svg-settings',
         'og_svg_general_section'
       );
@@ -149,20 +155,28 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       add_settings_field(
         'enabled_post_types',
         'Enabled Post Types',
-        array($this, 'enabledPostTypesFieldCallback'),
+        [$this, 'enabledPostTypesFieldCallback'],
+        'og-svg-settings',
+        'og_svg_general_section'
+      );
+
+      add_settings_field(
+        'footer_text',
+        'Footer Text',
+        [$this, 'footerTextFieldCallback'],
         'og-svg-settings',
         'og_svg_general_section'
       );
     }
 
-    public function generalSectionCallback()
+    public function generalSectionCallback(): void
     {
       // Simplified - no intro text needed
     }
 
-    public function avatarUrlFieldCallback()
+    public function avatarUrlFieldCallback(): void
     {
-      $value = isset($this->settings['avatar_url']) ? $this->settings['avatar_url'] : '';
+      $value = $this->settings['avatar_url'] ?? '';
 
       echo '<div class="og-svg-field">';
       echo '<div class="og-svg-input-group">';
@@ -182,9 +196,9 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       echo '</div>';
     }
 
-    public function colorSchemeFieldCallback()
+    public function colorSchemeFieldCallback(): void
     {
-      $value = isset($this->settings['color_scheme']) ? $this->settings['color_scheme'] : 'gabriel';
+      $value = $this->settings['color_scheme'] ?? 'gabriel';
 
       // Get available themes from generator
       $generator = new OG_SVG_Generator();
@@ -211,9 +225,9 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       echo '</div>';
     }
 
-    public function displayOptionsFieldCallback()
+    public function displayOptionsFieldCallback(): void
     {
-      $show_tagline = isset($this->settings['show_tagline']) ? $this->settings['show_tagline'] : true;
+      $show_tagline = $this->settings['show_tagline'] ?? true;
 
       echo '<div class="og-svg-field">';
       echo '<label class="og-svg-checkbox">';
@@ -224,19 +238,19 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       echo '</div>';
     }
 
-    public function fallbackTitleFieldCallback()
+    public function fallbackTitleFieldCallback(): void
     {
-      $value = isset($this->settings['fallback_title']) ? $this->settings['fallback_title'] : 'Welcome';
+      $value = $this->settings['fallback_title'] ?? 'Welcome';
       echo '<div class="og-svg-field">';
       echo '<input type="text" id="fallback_title" name="og_svg_settings[fallback_title]" value="' . esc_attr($value) . '" class="og-svg-input" placeholder="Welcome" />';
       echo '<p class="og-svg-description">Default title for pages without specific titles (like homepage)</p>';
       echo '</div>';
     }
 
-    public function enabledPostTypesFieldCallback()
+    public function enabledPostTypesFieldCallback(): void
     {
-      $value = isset($this->settings['enabled_post_types']) ? $this->settings['enabled_post_types'] : array('post', 'page');
-      $post_types = get_post_types(array('public' => true), 'objects');
+      $value = $this->settings['enabled_post_types'] ?? ['post', 'page'];
+      $post_types = get_post_types(['public' => true], 'objects');
 
       echo '<div class="og-svg-field">';
       echo '<div class="og-svg-checkbox-group">';
@@ -253,9 +267,26 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       echo '</div>';
     }
 
-    public function sanitizeSettings($input)
+    public function footerTextFieldCallback(): void
     {
-      $sanitized = array();
+      $value = $this->settings['footer_text'] ?? '';
+      echo '<div class="og-svg-field">';
+      echo '<input type="text" id="footer_text" name="og_svg_settings[footer_text]" value="' . esc_attr($value) . '" class="og-svg-input og-svg-input-wide" placeholder="e.g. Developer • Designer • Creator" />';
+      echo '<p class="og-svg-description">Custom text shown in footer area of some themes (like Gabriel). Leave empty to hide.</p>';
+      echo '</div>';
+    }
+
+    /**
+     * @param array<string, mixed>|null $input
+     * @return array<string, mixed>
+     */
+    public function sanitizeSettings(?array $input): array
+    {
+      $sanitized = [];
+
+      if (!is_array($input)) {
+        return $sanitized;
+      }
 
       if (isset($input['avatar_url'])) {
         $sanitized['avatar_url'] = esc_url_raw($input['avatar_url']);
@@ -268,7 +299,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
           $available_themes = $generator->getAvailableThemes();
 
           if (array_key_exists($input['color_scheme'], $available_themes)) {
-            $sanitized['color_scheme'] = $input['color_scheme'];
+            $sanitized['color_scheme'] = sanitize_text_field($input['color_scheme']);
           } else {
             $sanitized['color_scheme'] = 'gabriel'; // fallback
             add_settings_error('og_svg_settings', 'invalid_theme', 'Selected theme is not available. Defaulted to Gabriel theme.');
@@ -281,7 +312,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
         $sanitized['color_scheme'] = 'gabriel';
       }
 
-      $sanitized['show_tagline'] = isset($input['show_tagline']) ? true : false;
+      $sanitized['show_tagline'] = isset($input['show_tagline']);
 
       if (isset($input['fallback_title'])) {
         $sanitized['fallback_title'] = sanitize_text_field($input['fallback_title']);
@@ -290,16 +321,21 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       if (isset($input['enabled_post_types']) && is_array($input['enabled_post_types'])) {
         $sanitized['enabled_post_types'] = array_map('sanitize_text_field', $input['enabled_post_types']);
       } else {
-        $sanitized['enabled_post_types'] = array();
+        $sanitized['enabled_post_types'] = [];
+      }
+
+      if (isset($input['footer_text'])) {
+        $sanitized['footer_text'] = sanitize_text_field($input['footer_text']);
       }
 
       return $sanitized;
     }
 
-    // ... (keeping all the AJAX methods unchanged)
-    public function ajaxGeneratePreview()
+    public function ajaxGeneratePreview(): void
     {
-      if (!wp_verify_nonce($_POST['nonce'], 'og_svg_admin_nonce')) {
+      // Validate nonce before accessing POST data
+      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
         wp_die('Security check failed');
       }
 
@@ -309,12 +345,13 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
       try {
         // Parse form data to get current settings
-        $preview_settings = array();
+        $preview_settings = [];
 
-        if (isset($_POST['settings_data'])) {
-          parse_str($_POST['settings_data'], $form_data);
+        $settings_data = isset($_POST['settings_data']) ? sanitize_text_field($_POST['settings_data']) : '';
+        if (!empty($settings_data)) {
+          parse_str($settings_data, $form_data);
 
-          if (isset($form_data['og_svg_settings'])) {
+          if (isset($form_data['og_svg_settings']) && is_array($form_data['og_svg_settings'])) {
             $form_settings = $form_data['og_svg_settings'];
 
             // Map form data to preview settings
@@ -324,39 +361,59 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
             if (isset($form_settings['avatar_url'])) {
               $preview_settings['avatar_url'] = esc_url_raw($form_settings['avatar_url']);
             }
-            if (isset($form_settings['show_tagline'])) {
-              $preview_settings['show_tagline'] = true;
-            } else {
-              $preview_settings['show_tagline'] = false;
-            }
+            $preview_settings['show_tagline'] = isset($form_settings['show_tagline']);
             if (isset($form_settings['fallback_title'])) {
               $preview_settings['fallback_title'] = sanitize_text_field($form_settings['fallback_title']);
             }
+            if (isset($form_settings['footer_text'])) {
+              $preview_settings['footer_text'] = sanitize_text_field($form_settings['footer_text']);
+            }
           }
+        }
+
+        // Generate cache key based on settings
+        $cache_key = 'og_svg_preview_' . md5(serialize($preview_settings));
+
+        // Check for cached preview (15 minutes TTL)
+        $cached_svg = get_transient($cache_key);
+        if ($cached_svg !== false) {
+          $data_url = 'data:image/svg+xml;base64,' . base64_encode($cached_svg);
+          wp_send_json_success([
+            'image_url' => $data_url,
+            'message' => 'Preview loaded from cache',
+            'theme' => $preview_settings['color_scheme'] ?? $this->settings['color_scheme'] ?? 'gabriel',
+            'cached' => true
+          ]);
+          return;
         }
 
         // Generate preview SVG content
         $generator = new OG_SVG_Generator();
         $svg_content = $generator->generateSVGWithSettings(null, $preview_settings);
 
+        // Cache the preview for 15 minutes
+        set_transient($cache_key, $svg_content, 900);
+
         // Create a data URL for immediate display
         $data_url = 'data:image/svg+xml;base64,' . base64_encode($svg_content);
 
-        wp_send_json_success(array(
+        wp_send_json_success([
           'image_url' => $data_url,
           'message' => 'Preview generated successfully!',
-          'theme' => $preview_settings['color_scheme'] ?? $this->settings['color_scheme'] ?? 'gabriel'
-        ));
+          'theme' => $preview_settings['color_scheme'] ?? $this->settings['color_scheme'] ?? 'gabriel',
+          'cached' => false
+        ]);
       } catch (Exception $e) {
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'Failed to generate preview: ' . $e->getMessage()
-        ));
+        ]);
       }
     }
 
-    public function ajaxCleanupImages()
+    public function ajaxCleanupImages(): void
     {
-      if (!wp_verify_nonce($_POST['nonce'], 'og_svg_admin_nonce')) {
+      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
         wp_die('Security check failed');
       }
 
@@ -371,46 +428,52 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
         $count = 0;
         if (is_dir($svg_dir)) {
           $files = glob($svg_dir . '*.svg');
-          foreach ($files as $file) {
-            if (unlink($file)) {
-              $count++;
+          if ($files !== false) {
+            foreach ($files as $file) {
+              if (unlink($file)) {
+                $count++;
+              }
             }
           }
 
-          if (count(glob($svg_dir . '*')) === 0) {
+          $remaining = glob($svg_dir . '*');
+          if ($remaining !== false && count($remaining) === 0) {
             rmdir($svg_dir);
           }
         }
 
-        $attachments = get_posts(array(
+        $attachments = get_posts([
           'post_type' => 'attachment',
-          'meta_query' => array(
-            array(
+          'meta_query' => [
+            [
               'key' => '_og_svg_generated',
               'value' => '1',
               'compare' => '='
-            )
-          ),
+            ]
+          ],
           'posts_per_page' => -1
-        ));
+        ]);
 
         foreach ($attachments as $attachment) {
-          wp_delete_attachment($attachment->ID, true);
+          if ($attachment instanceof WP_Post) {
+            wp_delete_attachment($attachment->ID, true);
+          }
         }
 
-        wp_send_json_success(array(
+        wp_send_json_success([
           'message' => sprintf('Successfully removed %d SVG files and %d media library entries.', $count, count($attachments))
-        ));
+        ]);
       } catch (Exception $e) {
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'Failed to cleanup images: ' . $e->getMessage()
-        ));
+        ]);
       }
     }
 
-    public function ajaxFlushRewrite()
+    public function ajaxFlushRewrite(): void
     {
-      if (!wp_verify_nonce($_POST['nonce'], 'og_svg_admin_nonce')) {
+      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
         wp_die('Security check failed');
       }
 
@@ -421,19 +484,20 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       try {
         flush_rewrite_rules(true);
 
-        wp_send_json_success(array(
+        wp_send_json_success([
           'message' => 'Rewrite rules flushed successfully! Please test the URLs again.'
-        ));
+        ]);
       } catch (Exception $e) {
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'Failed to flush rewrite rules: ' . $e->getMessage()
-        ));
+        ]);
       }
     }
 
-    public function ajaxTestUrl()
+    public function ajaxTestUrl(): void
     {
-      if (!wp_verify_nonce($_POST['nonce'], 'og_svg_admin_nonce')) {
+      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
         wp_die('Security check failed');
       }
 
@@ -444,10 +508,10 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       try {
         $test_url = get_site_url() . '/og-svg/home/';
 
-        $response = wp_safe_remote_head($test_url, array(
+        $response = wp_safe_remote_head($test_url, [
           'timeout' => 10,
           'sslverify' => false
-        ));
+        ]);
 
         if (is_wp_error($response)) {
           throw new Exception('URL test failed: ' . $response->get_error_message());
@@ -457,97 +521,99 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
         $content_type = wp_remote_retrieve_header($response, 'content-type');
 
         if ($response_code === 200) {
-          wp_send_json_success(array(
+          wp_send_json_success([
             'message' => 'URL is working correctly!',
-            'details' => array(
+            'details' => [
               'url' => $test_url,
               'response_code' => $response_code,
               'content_type' => $content_type
-            )
-          ));
+            ]
+          ]);
         } else {
-          wp_send_json_error(array(
+          wp_send_json_error([
             'message' => 'URL returned status code: ' . $response_code,
-            'details' => array(
+            'details' => [
               'url' => $test_url,
               'response_code' => $response_code
-            )
-          ));
+            ]
+          ]);
         }
       } catch (Exception $e) {
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'URL test failed: ' . $e->getMessage()
-        ));
+        ]);
       }
     }
 
-    public function ajaxBulkGenerate()
+    public function ajaxBulkGenerate(): void
     {
       // Enable error reporting for debugging
       if (defined('WP_DEBUG') && WP_DEBUG) {
         error_reporting(E_ALL);
-        ini_set('display_errors', 1);
       }
 
       try {
         // Verify nonce
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'og_svg_admin_nonce')) {
-          wp_send_json_error(array('message' => 'Security check failed'));
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+        if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
+          wp_send_json_error(['message' => 'Security check failed']);
           return;
         }
 
         if (!current_user_can('manage_options')) {
-          wp_send_json_error(array('message' => 'Insufficient permissions'));
+          wp_send_json_error(['message' => 'Insufficient permissions']);
           return;
         }
 
         // Get settings
-        $settings = get_option('og_svg_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
-        $force_regenerate = isset($_POST['force']) && $_POST['force'] === '1';
+        $settings = get_option('og_svg_settings', []);
+        $enabled_types = $settings['enabled_post_types'] ?? ['post', 'page'];
+        $force_raw = isset($_POST['force']) ? sanitize_text_field($_POST['force']) : '0';
+        $force_regenerate = $force_raw === '1';
         $batch_size = 3; // Smaller batch size to prevent timeouts
-        $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+        $offset = isset($_POST['offset']) ? (int) $_POST['offset'] : 0;
 
         // Validate settings
         if (empty($enabled_types)) {
-          wp_send_json_error(array('message' => 'No post types enabled for generation'));
+          wp_send_json_error(['message' => 'No post types enabled for generation']);
           return;
         }
 
         // Get posts to process
-        $query_args = array(
+        $query_args = [
           'post_type' => $enabled_types,
           'post_status' => 'publish',
           'posts_per_page' => $batch_size,
           'offset' => $offset,
           'fields' => 'ids'
-        );
+        ];
 
         $posts = get_posts($query_args);
 
         // If no more posts, we're done
         if (empty($posts)) {
-          wp_send_json_success(array(
+          wp_send_json_success([
             'completed' => true,
             'message' => 'All images generated successfully!',
             'processed' => $offset
-          ));
+          ]);
           return;
         }
 
         // Initialize generator
         if (!class_exists('OG_SVG_Generator')) {
-          wp_send_json_error(array('message' => 'SVG Generator class not found'));
+          wp_send_json_error(['message' => 'SVG Generator class not found']);
           return;
         }
 
         $generator = new OG_SVG_Generator();
         $generated = 0;
         $skipped = 0;
-        $errors = array();
+        $errors = [];
 
         // Process each post
         foreach ($posts as $post_id) {
+          $post_id = (int) $post_id;
           try {
             // Check if file already exists
             $file_path = $generator->getSVGFilePath($post_id);
@@ -589,17 +655,17 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
         }
 
         // Get total count for progress calculation
-        $total_query = array(
+        $total_query = [
           'post_type' => $enabled_types,
           'post_status' => 'publish',
           'posts_per_page' => -1,
           'fields' => 'ids'
-        );
+        ];
         $all_posts = get_posts($total_query);
         $total_posts = count($all_posts);
 
         // Return progress update
-        wp_send_json_success(array(
+        wp_send_json_success([
           'completed' => false,
           'processed' => $offset + count($posts),
           'total' => $total_posts,
@@ -614,21 +680,21 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
             $generated,
             $skipped
           )
-        ));
+        ]);
       } catch (Exception $e) {
         error_log('OG SVG bulk generation fatal error: ' . $e->getMessage());
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'Bulk generation failed: ' . $e->getMessage()
-        ));
+        ]);
       } catch (Error $e) {
         error_log('OG SVG bulk generation PHP error: ' . $e->getMessage());
-        wp_send_json_error(array(
+        wp_send_json_error([
           'message' => 'PHP Error: ' . $e->getMessage()
-        ));
+        ]);
       }
     }
 
-    public function settingsPage()
+    public function settingsPage(): void
     {
       if (!current_user_can('manage_options')) {
         return;
@@ -645,7 +711,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 ?>
       <div class="og-svg-admin">
         <div class="og-svg-header">
-          <h1><span class="dashicons dashicons-share"></span> OpenGraph SVG Generator</h1>
+          <h1><span class="dashicons dashicons-share"></span> OpenGraph Image Generator</h1>
           <p>Create beautiful, branded social media preview images automatically</p>
         </div>
 
