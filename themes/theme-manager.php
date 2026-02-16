@@ -18,7 +18,7 @@ if (!class_exists('OG_SVG_Theme_Manager')) {
     /** @var array<string, array{class: class-string, info: array<string, mixed>, file: string}> */
     private array $themes = [];
 
-    private string $themes_dir;
+    private readonly string $themes_dir;
 
     public function __construct()
     {

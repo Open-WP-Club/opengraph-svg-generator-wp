@@ -35,14 +35,20 @@ class OG_SVG_Theme_Gabriel extends OG_SVG_Theme_Base
 
   public function generateSVG()
   {
-    $colors = $this->getColorScheme();
+    $colors = $this->getEffectiveColorScheme();
     
     $svg = $this->generateSVGHeader();
     $svg .= $this->generateDefs($colors);
     
     // Background
     $svg .= '<rect width="1200" height="630" fill="url(#bgGradient)"/>' . "\n";
-    
+
+    // Optional featured image as subtle background
+    $featured_image = $this->getFeaturedImageUrl();
+    if ($featured_image) {
+      $svg .= $this->generateFeaturedImageBackground($featured_image, 0.7);
+    }
+
     // Tech-inspired decorative elements
     $svg .= $this->generateTechDecorations();
     

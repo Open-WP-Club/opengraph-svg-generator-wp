@@ -16,7 +16,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
   class OG_SVG_Admin_Settings
   {
     /** @var array<string, mixed> */
-    private array $settings;
+    private readonly array $settings;
 
     private bool $settings_updated = false;
 
@@ -34,7 +34,27 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       // Suppress default WordPress settings messages
       add_action('admin_notices', [$this, 'suppressDefaultNotices'], 1);
 
+      // Per-post theme meta box
+      add_action('add_meta_boxes', [$this, 'addThemeMetaBox']);
+      add_action('save_post', [$this, 'saveThemeMetaBox']);
+
       $this->settings = get_option('og_svg_settings', []);
+    }
+
+    /**
+     * Verify AJAX request nonce and capability.
+     * Terminates with wp_die() on failure.
+     */
+    private function verifyAjaxRequest(string $action = 'og_svg_admin_nonce'): void
+    {
+      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, $action)) {
+        wp_die('Security check failed');
+      }
+
+      if (!current_user_can('manage_options')) {
+        wp_die('Insufficient permissions');
+      }
     }
 
     public function suppressDefaultNotices(): void
@@ -71,6 +91,17 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
     public function enqueueAdminScripts(string $hook): void
     {
+      // Load minimal CSS for meta box on post editor pages
+      if ($hook === 'post.php' || $hook === 'post-new.php') {
+        wp_enqueue_style(
+          'og-svg-admin-css',
+          OG_SVG_PLUGIN_URL . 'assets/css/admin.css',
+          [],
+          OG_SVG_VERSION
+        );
+        return;
+      }
+
       if ($hook !== 'settings_page_og-svg-settings') {
         return;
       }
@@ -132,6 +163,14 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
         'color_scheme',
         'Theme',
         [$this, 'colorSchemeFieldCallback'],
+        'og-svg-settings',
+        'og_svg_general_section'
+      );
+
+      add_settings_field(
+        'custom_colors',
+        'Custom Colors',
+        [$this, 'customColorsFieldCallback'],
         'og-svg-settings',
         'og_svg_general_section'
       );
@@ -225,6 +264,41 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       echo '</div>';
     }
 
+    public function customColorsFieldCallback(): void
+    {
+      $custom_colors = $this->settings['custom_colors'] ?? [];
+
+      $fields = [
+        'accent' => ['label' => 'Accent', 'description' => 'Buttons, links, highlights'],
+        'gradient_start' => ['label' => 'Gradient Start', 'description' => 'Background gradient start'],
+        'gradient_end' => ['label' => 'Gradient End', 'description' => 'Background gradient end'],
+        'text_primary' => ['label' => 'Text', 'description' => 'Primary text color'],
+      ];
+
+      echo '<div class="og-svg-field">';
+      echo '<div class="og-svg-color-pickers">';
+
+      foreach ($fields as $key => $field) {
+        $value = $custom_colors[$key] ?? '';
+        $input_name = 'og_svg_settings[custom_colors][' . $key . ']';
+        $input_id = 'custom_color_' . $key;
+
+        echo '<div class="og-svg-color-picker-field">';
+        echo '<label for="' . esc_attr($input_id) . '">' . esc_html($field['label']) . '</label>';
+        echo '<div class="og-svg-color-picker-row">';
+        echo '<input type="color" id="' . esc_attr($input_id) . '_picker" value="' . esc_attr($value ?: '#000000') . '" class="og-svg-color-input-picker" data-target="' . esc_attr($input_id) . '"' . ($value ? '' : ' disabled') . ' />';
+        echo '<input type="text" id="' . esc_attr($input_id) . '" name="' . esc_attr($input_name) . '" value="' . esc_attr($value) . '" class="og-svg-color-input-text" placeholder="Theme default" pattern="^#[0-9a-fA-F]{6}$" maxlength="7" />';
+        echo '<button type="button" class="og-svg-color-clear" data-target="' . esc_attr($input_id) . '" title="Reset to theme default">&times;</button>';
+        echo '</div>';
+        echo '<span class="og-svg-color-description">' . esc_html($field['description']) . '</span>';
+        echo '</div>';
+      }
+
+      echo '</div>';
+      echo '<p class="og-svg-description">Override specific theme colors. Leave empty to use theme defaults.</p>';
+      echo '</div>';
+    }
+
     public function displayOptionsFieldCallback(): void
     {
       $show_tagline = $this->settings['show_tagline'] ?? true;
@@ -312,6 +386,23 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
         $sanitized['color_scheme'] = 'gabriel';
       }
 
+      // Custom colors
+      if (isset($input['custom_colors']) && is_array($input['custom_colors'])) {
+        $sanitized['custom_colors'] = [];
+        $allowed_keys = ['accent', 'gradient_start', 'gradient_end', 'text_primary'];
+        foreach ($allowed_keys as $key) {
+          $color = $input['custom_colors'][$key] ?? '';
+          if (!empty($color)) {
+            $sanitized_color = sanitize_hex_color($color);
+            if ($sanitized_color) {
+              $sanitized['custom_colors'][$key] = $sanitized_color;
+            }
+          }
+        }
+      } else {
+        $sanitized['custom_colors'] = [];
+      }
+
       $sanitized['show_tagline'] = isset($input['show_tagline']);
 
       if (isset($input['fallback_title'])) {
@@ -333,15 +424,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
     public function ajaxGeneratePreview(): void
     {
-      // Validate nonce before accessing POST data
-      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
-      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
-        wp_die('Security check failed');
-      }
-
-      if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
-      }
+      $this->verifyAjaxRequest();
 
       try {
         // Parse form data to get current settings
@@ -367,6 +450,17 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
             }
             if (isset($form_settings['footer_text'])) {
               $preview_settings['footer_text'] = sanitize_text_field($form_settings['footer_text']);
+            }
+            if (isset($form_settings['custom_colors']) && is_array($form_settings['custom_colors'])) {
+              $preview_settings['custom_colors'] = [];
+              foreach ($form_settings['custom_colors'] as $key => $color) {
+                if (!empty($color)) {
+                  $sanitized_color = sanitize_hex_color($color);
+                  if ($sanitized_color) {
+                    $preview_settings['custom_colors'][sanitize_text_field($key)] = $sanitized_color;
+                  }
+                }
+              }
             }
           }
         }
@@ -412,14 +506,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
     public function ajaxCleanupImages(): void
     {
-      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
-      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
-        wp_die('Security check failed');
-      }
-
-      if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
-      }
+      $this->verifyAjaxRequest();
 
       try {
         $upload_dir = wp_upload_dir();
@@ -427,7 +514,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
         $count = 0;
         if (is_dir($svg_dir)) {
-          $files = glob($svg_dir . '*.svg');
+          $files = glob($svg_dir . '*.{svg,png}', GLOB_BRACE);
           if ($files !== false) {
             foreach ($files as $file) {
               if (unlink($file)) {
@@ -472,14 +559,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
     public function ajaxFlushRewrite(): void
     {
-      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
-      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
-        wp_die('Security check failed');
-      }
-
-      if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
-      }
+      $this->verifyAjaxRequest();
 
       try {
         flush_rewrite_rules(true);
@@ -496,14 +576,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
 
     public function ajaxTestUrl(): void
     {
-      $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
-      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
-        wp_die('Security check failed');
-      }
-
-      if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
-      }
+      $this->verifyAjaxRequest();
 
       try {
         $test_url = get_site_url() . '/og-svg/home/';
@@ -553,17 +626,7 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       }
 
       try {
-        // Verify nonce
-        $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
-        if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_admin_nonce')) {
-          wp_send_json_error(['message' => 'Security check failed']);
-          return;
-        }
-
-        if (!current_user_can('manage_options')) {
-          wp_send_json_error(['message' => 'Insufficient permissions']);
-          return;
-        }
+        $this->verifyAjaxRequest();
 
         // Get settings
         $settings = get_option('og_svg_settings', []);
@@ -694,6 +757,70 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
       }
     }
 
+    public function addThemeMetaBox(): void
+    {
+      $enabled_types = $this->settings['enabled_post_types'] ?? ['post', 'page'];
+
+      foreach ($enabled_types as $post_type) {
+        add_meta_box(
+          'og_svg_theme_override',
+          'OpenGraph Theme',
+          [$this, 'renderThemeMetaBox'],
+          $post_type,
+          'side',
+          'low'
+        );
+      }
+    }
+
+    public function renderThemeMetaBox(WP_Post $post): void
+    {
+      wp_nonce_field('og_svg_theme_meta', 'og_svg_theme_nonce');
+
+      $current_theme = get_post_meta($post->ID, '_og_svg_theme', true);
+      $global_theme_id = $this->settings['color_scheme'] ?? 'gabriel';
+
+      $generator = new OG_SVG_Generator();
+      $themes = $generator->getAvailableThemes();
+
+      $global_theme_name = $themes[$global_theme_id]['name'] ?? ucfirst($global_theme_id);
+
+      echo '<select name="og_svg_theme" class="og-svg-metabox-select">';
+      echo '<option value="">Default (' . esc_html($global_theme_name) . ')</option>';
+
+      foreach ($themes as $theme_id => $theme_info) {
+        $selected = selected($current_theme, $theme_id, false);
+        echo '<option value="' . esc_attr($theme_id) . '" ' . $selected . '>' . esc_html($theme_info['name']) . '</option>';
+      }
+
+      echo '</select>';
+      echo '<p class="og-svg-metabox-description">Override the global theme for this post\'s OpenGraph image.</p>';
+    }
+
+    public function saveThemeMetaBox(int $post_id): void
+    {
+      $nonce = isset($_POST['og_svg_theme_nonce']) ? sanitize_text_field($_POST['og_svg_theme_nonce']) : '';
+      if (empty($nonce) || !wp_verify_nonce($nonce, 'og_svg_theme_meta')) {
+        return;
+      }
+
+      if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+      }
+
+      if (!current_user_can('edit_post', $post_id)) {
+        return;
+      }
+
+      $theme = isset($_POST['og_svg_theme']) ? sanitize_text_field($_POST['og_svg_theme']) : '';
+
+      if (empty($theme)) {
+        delete_post_meta($post_id, '_og_svg_theme');
+      } else {
+        update_post_meta($post_id, '_og_svg_theme', $theme);
+      }
+    }
+
     public function settingsPage(): void
     {
       if (!current_user_can('manage_options')) {
@@ -810,6 +937,12 @@ if (!class_exists('OG_SVG_Admin_Settings')) {
                   <span>Permalinks</span>
                   <span class="og-svg-status-badge <?php echo get_option('permalink_structure') ? 'og-svg-status-ok' : 'og-svg-status-warning'; ?>">
                     <?php echo get_option('permalink_structure') ? 'OK' : 'Plain'; ?>
+                  </span>
+                </div>
+                <div class="og-svg-status-item">
+                  <span>PNG Conversion</span>
+                  <span class="og-svg-status-badge <?php echo extension_loaded('imagick') ? 'og-svg-status-ok' : 'og-svg-status-warning'; ?>">
+                    <?php echo extension_loaded('imagick') ? 'Imagick' : 'Unavailable'; ?>
                   </span>
                 </div>
               </div>

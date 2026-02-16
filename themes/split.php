@@ -36,7 +36,7 @@ class OG_SVG_Theme_SplitScreen extends OG_SVG_Theme_Base
 
   public function generateSVG()
   {
-    $colors = $this->getColorScheme();
+    $colors = $this->getEffectiveColorScheme();
 
     $svg = $this->generateSVGHeader();
     $svg .= $this->generateDefs($colors);
@@ -57,30 +57,6 @@ class OG_SVG_Theme_SplitScreen extends OG_SVG_Theme_Base
     $svg .= $this->generateSVGFooter();
 
     return $svg;
-  }
-
-  private function getFeaturedImageUrl()
-  {
-    // Get featured image from current post
-    if (!empty($this->data['post_id'])) {
-      $post_id = $this->data['post_id'];
-      $featured_id = get_post_thumbnail_id($post_id);
-
-      if ($featured_id) {
-        return wp_get_attachment_image_url($featured_id, 'large');
-      }
-    }
-
-    // Check for other image sources
-    global $post;
-    if ($post && $post->ID) {
-      $featured_id = get_post_thumbnail_id($post->ID);
-      if ($featured_id) {
-        return wp_get_attachment_image_url($featured_id, 'large');
-      }
-    }
-
-    return null;
   }
 
   private function generateImageSection($colors, $image_url)
@@ -213,22 +189,6 @@ class OG_SVG_Theme_SplitScreen extends OG_SVG_Theme_Base
     }
 
     return $domain_section;
-  }
-
-  private function getCleanDomain()
-  {
-    $url = $this->data['site_url'];
-
-    // Remove protocol
-    $domain = preg_replace('#^https?://#', '', $url);
-
-    // Remove www
-    $domain = preg_replace('#^www\.#', '', $domain);
-
-    // Remove trailing slash and paths
-    $domain = strtok($domain, '/');
-
-    return $domain;
   }
 
   protected function generateDefs($colors)

@@ -16,9 +16,9 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
   class OG_SVG_Meta_Handler
   {
     /** @var array<string, mixed> */
-    private array $settings;
+    private readonly array $settings;
 
-    private OG_SVG_Generator $generator;
+    private readonly OG_SVG_Generator $generator;
 
     public function __construct()
     {
@@ -81,7 +81,8 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
         $this->outputMetaTag('og:image', $image_url);
         $this->outputMetaTag('og:image:width', '1200');
         $this->outputMetaTag('og:image:height', '630');
-        $this->outputMetaTag('og:image:type', 'image/svg+xml');
+        $image_type = str_ends_with($image_url, '.png') ? 'image/png' : 'image/svg+xml';
+        $this->outputMetaTag('og:image:type', $image_type);
         $this->outputMetaTag('og:image:alt', $title . ' - ' . $site_name);
 
         // Add secure URL if using HTTPS
@@ -278,33 +279,27 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
     private function getOpenGraphImageUrl(): string
     {
       $post = get_post();
+      $post_id = (is_singular() && $post instanceof WP_Post) ? $post->ID : null;
 
-      if (is_singular() && $post instanceof WP_Post) {
-        return $this->generator->getSVGUrl($post->ID);
+      // Prefer PNG if it exists (social platforms don't render SVG)
+      $png_path = $this->generator->getPNGFilePath($post_id);
+      if (file_exists($png_path)) {
+        return $this->generator->getPNGFileUrl($post_id);
       }
 
-      return $this->generator->getSVGUrl();
+      // Fall back to SVG URL endpoint
+      return $this->generator->getSVGUrl($post_id);
     }
 
     private function getOpenGraphType(): string
     {
-      if (is_home() || is_front_page()) {
-        return 'website';
-      }
-
-      if (is_singular('post')) {
-        return 'article';
-      }
-
-      if (is_singular()) {
-        return 'website';
-      }
-
-      if (is_author()) {
-        return 'profile';
-      }
-
-      return 'website';
+      return match (true) {
+        is_home(), is_front_page() => 'website',
+        is_singular('post') => 'article',
+        is_singular() => 'website',
+        is_author() => 'profile',
+        default => 'website',
+      };
     }
 
     public function addStructuredData(): void
@@ -700,10 +695,15 @@ if (!class_exists('OG_SVG_Meta_Handler')) {
         }
       }
 
-      // Also delete the file from filesystem
+      // Also delete the files from filesystem
       $file_path = $this->generator->getSVGFilePath($post_id);
       if (file_exists($file_path)) {
         unlink($file_path);
+      }
+
+      $png_path = $this->generator->getPNGFilePath($post_id);
+      if (file_exists($png_path)) {
+        unlink($png_path);
       }
     }
 

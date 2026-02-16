@@ -9,6 +9,7 @@ jQuery(document).ready(function($) {
   initCustomNotices();
   initAvatarUpload();
   initThemeSelection();
+  initColorPickers();
   initPreviewGeneration();
   initImageCleanup();
   initBulkGeneration();
@@ -136,6 +137,47 @@ jQuery(document).ready(function($) {
 
     $('input[name="og_svg_settings[color_scheme]"]').on('change', function() {
       // Visual feedback is handled by CSS
+    });
+  }
+
+  /**
+   * Color picker sync
+   */
+  function initColorPickers() {
+    // Sync native color picker -> text input
+    $(document).on('input', '.og-svg-color-input-picker', function() {
+      var targetId = $(this).data('target');
+      $('#' + targetId).val($(this).val()).trigger('change');
+    });
+
+    // Sync text input -> native color picker
+    $(document).on('input', '.og-svg-color-input-text', function() {
+      var id = $(this).attr('id');
+      var val = $(this).val().trim();
+      var $picker = $('#' + id + '_picker');
+
+      if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+        $picker.val(val).prop('disabled', false);
+      } else if (val === '') {
+        $picker.prop('disabled', true);
+      }
+    });
+
+    // Clear button
+    $(document).on('click', '.og-svg-color-clear', function(e) {
+      e.preventDefault();
+      var targetId = $(this).data('target');
+      $('#' + targetId).val('').trigger('change');
+      $('#' + targetId + '_picker').prop('disabled', true);
+    });
+
+    // Enable picker when text field has value on load
+    $('.og-svg-color-input-text').each(function() {
+      var val = $(this).val().trim();
+      var id = $(this).attr('id');
+      if (val && /^#[0-9a-fA-F]{6}$/.test(val)) {
+        $('#' + id + '_picker').val(val).prop('disabled', false);
+      }
     });
   }
 

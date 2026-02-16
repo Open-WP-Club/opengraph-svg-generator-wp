@@ -35,7 +35,7 @@ class OG_SVG_Theme_PurpleGuide extends OG_SVG_Theme_Base
 
   public function generateSVG()
   {
-    $colors = $this->getColorScheme();
+    $colors = $this->getEffectiveColorScheme();
 
     $svg = $this->generateSVGHeader();
     $svg .= $this->generateDefs($colors);
@@ -122,8 +122,11 @@ class OG_SVG_Theme_PurpleGuide extends OG_SVG_Theme_Base
     $image_x = 1200 - $image_width - 60; // 60px from right edge
     $image_y = (630 - $image_height) / 2; // Centered vertically
 
-    // Try to get featured image first
-    $image_url = $this->getFeaturedImageUrl();
+    // Try to get featured image first, fall back to avatar
+    $image_url = $this->getFeaturedImageUrl('medium');
+    if (!$image_url && !empty($this->data['avatar_url'])) {
+      $image_url = $this->data['avatar_url'];
+    }
 
     if ($image_url) {
       // Background circle for the image
@@ -208,41 +211,6 @@ class OG_SVG_Theme_PurpleGuide extends OG_SVG_Theme_Base
     }
 
     return $url_section;
-  }
-
-  private function getFeaturedImageUrl()
-  {
-    // Try to get featured image from post
-    if (!empty($this->data['post_id'])) {
-      $post_id = $this->data['post_id'];
-      $featured_id = get_post_thumbnail_id($post_id);
-
-      if ($featured_id) {
-        $image_url = wp_get_attachment_image_url($featured_id, 'medium');
-        if ($image_url) {
-          return $image_url;
-        }
-      }
-    }
-
-    // Fallback to avatar
-    return !empty($this->data['avatar_url']) ? $this->data['avatar_url'] : null;
-  }
-
-  private function getCleanDomain()
-  {
-    $url = $this->data['site_url'];
-
-    // Remove protocol
-    $domain = preg_replace('#^https?://#', '', $url);
-
-    // Remove www
-    $domain = preg_replace('#^www\.#', '', $domain);
-
-    // Remove trailing slash and paths
-    $domain = strtok($domain, '/');
-
-    return $domain;
   }
 
   protected function generateDefs($colors)

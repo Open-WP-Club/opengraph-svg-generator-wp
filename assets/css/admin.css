@@ -621,6 +621,111 @@
   }
 }
 
+/* Color picker fields */
+.og-svg-color-pickers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 500px;
+}
+
+.og-svg-color-picker-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.og-svg-color-picker-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.og-svg-color-picker-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.og-svg-color-input-picker {
+  width: 36px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.og-svg-color-input-picker:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.og-svg-color-input-text {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: monospace;
+  min-width: 0;
+}
+
+.og-svg-color-input-text:focus {
+  border-color: #667eea;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.og-svg-color-clear {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  color: #999;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.og-svg-color-clear:hover {
+  background: #f8d7da;
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.og-svg-color-description {
+  font-size: 11px;
+  color: #888;
+}
+
+/* Per-post theme meta box */
+.og-svg-metabox-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.og-svg-metabox-description {
+  margin-top: 6px;
+  color: #666;
+  font-size: 12px;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .og-svg-color-pickers {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Hide WordPress default notices on our page */
 .settings_page_og-svg-settings .notice:not(.og-svg-notice) {
   display: none !important;

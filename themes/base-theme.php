@@ -18,12 +18,6 @@ if (!defined('ABSPATH')) {
 
 abstract class OG_SVG_Theme_Base
 {
-  /** @var array<string, mixed> Plugin settings */
-  protected array $settings;
-
-  /** @var array<string, mixed> Data for SVG generation (titles, URLs, etc.) */
-  protected array $data;
-
   /** @var int Maximum avatar file size in bytes (500KB) */
   protected const MAX_AVATAR_SIZE = 512000;
 
@@ -33,11 +27,10 @@ abstract class OG_SVG_Theme_Base
    * @param array<string, mixed> $settings Plugin settings from WordPress options
    * @param array<string, mixed> $data SVG data including titles, tagline, avatar URL
    */
-  public function __construct(array $settings, array $data)
-  {
-    $this->settings = $settings;
-    $this->data = $data;
-  }
+  public function __construct(
+    protected readonly array $settings,
+    protected readonly array $data,
+  ) {}
 
   /**
    * Get theme metadata for display in admin interface.
@@ -180,6 +173,99 @@ abstract class OG_SVG_Theme_Base
     file_put_contents($cache_file, $cache_content);
 
     return 'data:' . $content_type . ';base64,' . base64_encode($body);
+  }
+
+  /**
+   * Get the effective color scheme, merging any custom color overrides
+   * from settings into the theme's default color scheme.
+   *
+   * @return array<string, string> Merged color scheme
+   */
+  protected function getEffectiveColorScheme(): array
+  {
+    $colors = $this->getColorScheme();
+    $custom = $this->settings['custom_colors'] ?? [];
+
+    if (!is_array($custom) || empty($custom)) {
+      return $colors;
+    }
+
+    $overridable = ['accent', 'gradient_start', 'gradient_end', 'text_primary'];
+
+    foreach ($overridable as $key) {
+      if (!empty($custom[$key]) && isset($colors[$key])) {
+        $colors[$key] = $custom[$key];
+      }
+    }
+
+    return $colors;
+  }
+
+  /**
+   * Get the featured image URL for the current post.
+   *
+   * @param string $size WordPress image size to retrieve
+   * @return string|null Image URL or null if unavailable
+   */
+  protected function getFeaturedImageUrl(string $size = 'large'): ?string
+  {
+    if (!empty($this->data['post_id'])) {
+      $post_id = $this->data['post_id'];
+    } else {
+      global $post;
+      if ($post instanceof WP_Post && $post->ID) {
+        $post_id = $post->ID;
+      } else {
+        return null;
+      }
+    }
+
+    $featured_id = get_post_thumbnail_id($post_id);
+    if ($featured_id) {
+      $image_url = wp_get_attachment_image_url($featured_id, $size);
+      if ($image_url) {
+        return $image_url;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Generate a featured image background with a dark overlay for text readability.
+   *
+   * @param string $image_url The featured image URL
+   * @param float $overlay_opacity Opacity of the dark overlay (0.0 to 1.0)
+   * @return string SVG markup for the featured image background
+   */
+  protected function generateFeaturedImageBackground(string $image_url, float $overlay_opacity = 0.6): string
+  {
+    $bg = '';
+
+    try {
+      $image_data = $this->getImageAsBase64($image_url);
+      if ($image_data) {
+        $bg .= '<image x="0" y="0" width="1200" height="630" href="' . $image_data . '" preserveAspectRatio="xMidYMid slice" opacity="0.3"/>' . "\n";
+        $bg .= '<rect width="1200" height="630" fill="rgba(0,0,0,' . $overlay_opacity . ')"/>' . "\n";
+      }
+    } catch (Exception $e) {
+      // Silently fail - the theme will render without the featured image background
+    }
+
+    return $bg;
+  }
+
+  /**
+   * Get the clean domain name from the site URL (no protocol, no www, no path).
+   *
+   * @return string Clean domain name
+   */
+  protected function getCleanDomain(): string
+  {
+    $url = $this->data['site_url'] ?? '';
+    $domain = preg_replace('#^https?://(www\.)?#', '', $url);
+
+    return strtok((string) $domain, '/') ?: $url;
   }
 
   /**

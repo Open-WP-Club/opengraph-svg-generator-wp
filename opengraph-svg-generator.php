@@ -3,7 +3,7 @@
 /**
  * Plugin Name: OpenGraph Image Generator
  * Description: Dynamically generates beautiful OpenGraph images for social media sharing. Uses SVG for crisp, scalable graphics with a modular theme system.
- * Version: 1.4.0
+ * Version: 1.5.0
  * Author: Gabriel Kanev
  * Text Domain: og-svg-generator
  * Requires at least: 6.0
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('OG_SVG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('OG_SVG_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('OG_SVG_VERSION', '1.4.0');
+define('OG_SVG_VERSION', '1.5.0');
 define('OG_SVG_MIN_PHP_VERSION', '8.2');
 define('OG_SVG_MIN_WP_VERSION', '6.0');
 

@@ -24,9 +24,9 @@ if (!class_exists('OG_SVG_Generator')) {
     private array $settings;
 
     /** @var array<string, string> */
-    private array $upload_dir;
+    private readonly array $upload_dir;
 
-    private OG_SVG_Theme_Manager $theme_manager;
+    private readonly OG_SVG_Theme_Manager $theme_manager;
 
     /** @var int Maximum avatar file size in bytes (500KB) */
     private const MAX_AVATAR_SIZE = 512000;
@@ -35,11 +35,7 @@ if (!class_exists('OG_SVG_Generator')) {
     {
       $this->settings = get_option('og_svg_settings', []);
       $this->upload_dir = wp_upload_dir();
-
-      // Initialize theme manager
       $this->theme_manager = new OG_SVG_Theme_Manager();
-
-      // Ensure upload directory exists
       $this->ensureUploadDirectory();
     }
 
@@ -135,8 +131,14 @@ if (!class_exists('OG_SVG_Generator')) {
         throw new Exception('No title data available for SVG generation');
       }
 
-      // Get selected theme
-      $theme_id = $this->settings['color_scheme'] ?? 'gabriel';
+      // Check for per-post theme override, then fall back to global setting
+      $theme_id = '';
+      if ($post_id !== null) {
+        $theme_id = get_post_meta($post_id, '_og_svg_theme', true);
+      }
+      if (empty($theme_id)) {
+        $theme_id = $this->settings['color_scheme'] ?? 'gabriel';
+      }
 
       try {
         $theme = $this->theme_manager->getTheme($theme_id, $this->settings, $data);
@@ -316,6 +318,10 @@ if (!class_exists('OG_SVG_Generator')) {
           throw new Exception('Failed to write SVG file to disk');
         }
 
+        // Generate PNG alongside SVG
+        $png_path = $this->getPNGFilePath($post_id);
+        $this->convertSVGToPNG($svg_content, $png_path);
+
         // Add to media library if it doesn't exist
         $existing = get_posts([
           'post_type' => 'attachment',
@@ -429,6 +435,9 @@ if (!class_exists('OG_SVG_Generator')) {
       // Avatar URL
       $data['avatar_url'] = $this->settings['avatar_url'] ?? '';
 
+      // Post ID
+      $data['post_id'] = $post_id;
+
       // Site URL
       $parsed_url = parse_url(get_site_url(), PHP_URL_HOST);
       $data['site_url'] = is_string($parsed_url) ? $parsed_url : get_site_url();
@@ -456,6 +465,50 @@ if (!class_exists('OG_SVG_Generator')) {
       return $this->upload_dir['baseurl'] . '/og-svg/' . $filename;
     }
 
+    public function getPNGFilePath(?int $post_id = null): string
+    {
+      $filename = $post_id !== null ? "og-svg-{$post_id}.png" : "og-svg-home.png";
+      return $this->upload_dir['basedir'] . '/og-svg/' . $filename;
+    }
+
+    public function getPNGFileUrl(?int $post_id = null): string
+    {
+      $filename = $post_id !== null ? "og-svg-{$post_id}.png" : "og-svg-home.png";
+      return $this->upload_dir['baseurl'] . '/og-svg/' . $filename;
+    }
+
+    /**
+     * Convert SVG content to PNG using Imagick.
+     *
+     * @param string $svg_content The SVG XML content
+     * @param string $png_path Destination file path for the PNG
+     * @return bool True on success, false on failure
+     */
+    public function convertSVGToPNG(string $svg_content, string $png_path): bool
+    {
+      if (!extension_loaded('imagick')) {
+        return false;
+      }
+
+      try {
+        $imagick = new Imagick();
+        $imagick->setResolution(150, 150);
+        $imagick->readImageBlob($svg_content);
+        $imagick->setImageFormat('png');
+        $imagick->resizeImage(1200, 630, Imagick::FILTER_LANCZOS, 1);
+        $imagick->setImageCompressionQuality(90);
+
+        $result = $imagick->writeImage($png_path);
+        $imagick->clear();
+        $imagick->destroy();
+
+        return $result;
+      } catch (Exception $e) {
+        error_log('OG SVG: PNG conversion failed: ' . $e->getMessage());
+        return false;
+      }
+    }
+
     /**
      * @return array{files_removed: int, attachments_removed: int}
      */
@@ -465,7 +518,8 @@ if (!class_exists('OG_SVG_Generator')) {
       $count = 0;
 
       if (is_dir($svg_dir)) {
-        $files = glob($svg_dir . '*.svg');
+        // Remove both SVG and PNG files
+        $files = glob($svg_dir . '*.{svg,png}', GLOB_BRACE);
         if ($files !== false) {
           foreach ($files as $file) {
             if (unlink($file)) {
@@ -560,12 +614,17 @@ if (!class_exists('OG_SVG_Generator')) {
         return 0;
       }
 
-      // Delete orphaned files
+      // Delete orphaned files (SVG and corresponding PNG)
       foreach ($orphaned_post_ids as $post_id) {
         if (isset($file_map[$post_id]) && file_exists($file_map[$post_id])) {
           if (unlink($file_map[$post_id])) {
             $cleaned++;
           }
+        }
+        // Also delete corresponding PNG
+        $png_path = $svg_dir . 'og-svg-' . $post_id . '.png';
+        if (file_exists($png_path)) {
+          unlink($png_path);
         }
       }
 

@@ -35,13 +35,19 @@ class OG_SVG_Theme_Minimal extends OG_SVG_Theme_Base
 
   public function generateSVG()
   {
-    $colors = $this->getColorScheme();
+    $colors = $this->getEffectiveColorScheme();
 
     $svg = $this->generateSVGHeader();
     $svg .= $this->generateDefs($colors);
 
     // Clean background
     $svg .= '<rect width="1200" height="630" fill="' . $colors['background'] . '"/>' . "\n";
+
+    // Optional featured image as subtle background
+    $featured_image = $this->getFeaturedImageUrl();
+    if ($featured_image) {
+      $svg .= $this->generateFeaturedImageBackground($featured_image, 0.8);
+    }
 
     // Subtle border
     $svg .= '<rect x="0" y="0" width="1200" height="630" fill="none" stroke="' . $colors['accent_secondary'] . '" stroke-width="2"/>' . "\n";
